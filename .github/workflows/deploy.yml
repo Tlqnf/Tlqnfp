@@ -6,7 +6,7 @@ on:
     branches: [ "main" ]
 
 env:
-  DOCKER_IMAGE_NAME: ${{ toLowerCase(github.repository_owner) }}/${{ toLowerCase(github.event.repository.name) }}
+  DOCKER_IMAGE_NAME: ${{ toLowerCase(github.repository) }}
 
 jobs:
   build-and-push:
