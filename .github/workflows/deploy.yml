@@ -55,7 +55,8 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            APP_DIR=/path/to/your/app
+            export PATH=$PATH:/usr/bin:/usr/local/bin
+            APP_DIR=/app
             REPO_URL=${{ github.event.repository.html_url }}
 
             mkdir -p $APP_DIR
