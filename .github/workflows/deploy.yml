@@ -116,6 +116,9 @@ jobs:
             export AWS_REGION=${{ secrets.AWS_REGION }}
 
             # Use 'sudo -E' to preserve environment variables and pull the images
+            echo "--- docker-compose.yml content ---"
+            cat docker-compose.yml
+            echo "--- end of content ---"
             echo "Pulling Docker images..."
             sudo -E docker-compose pull
             if [ $? -ne 0 ]; then
