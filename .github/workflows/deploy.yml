@@ -1,0 +1,75 @@
+
+name: CI/CD Docker
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  DOCKER_IMAGE_NAME: ${{ github.repository_owner }}/${{ github.event.repository.name }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            # Set project directory
+            APP_DIR=/app
+            REPO_URL=${{ github.event.repository.html_url }}
+            
+            # Create app directory if it doesn't exist
+            mkdir -p $APP_DIR
+            cd $APP_DIR
+
+            # Download docker-compose.yml if it doesn't exist
+            if [ ! -f docker-compose.yml ]; then
+              echo "docker-compose.yml not found. Downloading from repository..."
+              curl -L -o docker-compose.yml $REPO_URL/raw/main/docker-compose.yml
+            fi
+            
+            # Log in to GitHub Container Registry
+            echo ${{ secrets.CR_PAT }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Update environment variables for docker-compose
+            export DOCKER_IMAGE_TAG=${{ github.sha }}
+            export DOCKER_IMAGE_NAME=ghcr.io/${{ env.DOCKER_IMAGE_NAME }}
+
+            # Pull the latest image and restart services
+            docker-compose pull
+            docker-compose up -d
