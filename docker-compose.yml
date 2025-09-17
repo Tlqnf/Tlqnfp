@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:latest
+    container_name: fitness_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-fitness_db}
+    ports:
+      - "${POSTGRES_PORT:-5123}:5432"

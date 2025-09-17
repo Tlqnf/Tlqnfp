@@ -1,0 +1,101 @@
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session, selectinload
+from typing import List, Optional
+
+from models import Report, User, Route # Import Route model
+from schemas.report import ReportResponse, AllReportResponse
+from database import get_db
+from utils.auth import get_current_user
+
+router = APIRouter(prefix="/report", tags=["report"])
+
+@router.get("/", response_model=List[ReportResponse])
+def get_all_reports(db: Session = Depends(get_db)):
+    """
+    Get all reports. (Note: This might need admin privileges in a real app)
+    """
+    reports = db.query(Report).all()
+    return reports
+
+
+@router.get("/by-user", response_model=List[ReportResponse])
+def get_reports_by_user(
+        user_id: Optional[int] = Query(None, description="Filter reports by User ID (defaults to current user)"),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Get a list of reports for a specific user.
+    If user_id is not provided, it defaults to the current authenticated user's ID.
+    A user can only retrieve their own reports.
+    """
+    target_user_id = user_id if user_id is not None else current_user.id
+
+    # Authorization check: A user can only query for their own reports
+    if target_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="다른 사용자의 리포트를 조회할 권한이 없습니다.")
+
+    query = db.query(Report).filter(
+        Report.user_id == target_user_id
+    )
+
+    reports = query.all()
+
+    if not reports:
+        raise HTTPException(status_code=404, detail="해당 조건에 맞는 리포트를 찾을 수 없습니다.")
+
+    return reports
+
+
+@router.get("/by-route-user", response_model=List[ReportResponse])
+def get_reports_by_route_and_user(
+        route_id: int = Query(..., description="Filter reports by Route ID"),
+        user_id: Optional[int] = Query(None, description="Filter reports by User ID (defaults to current user) "),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    """
+    Get a list of reports filtered by Route ID and optionally by User ID.
+    If user_id is not provided, it defaults to the current authenticated user's ID.
+    A user can only retrieve their own reports.
+    """
+    target_user_id = user_id if user_id is not None else current_user.id
+
+    # Authorization check: A user can only query for their own reports
+    if target_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="다른 사용자의 리포트를 조회할 권한이 없습니다.")
+
+    query = db.query(Report).filter(
+        Report.route_id == route_id,
+        Report.user_id == target_user_id
+    )
+
+    reports = query.all()
+
+    if not reports:
+        raise HTTPException(status_code=404, detail="해당 조건에 맞는 리포트를 찾을 수 없습니다.")
+
+    return reports
+
+
+@router.get("/{report_id}", response_model=AllReportResponse)
+def get_report_by_id(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    Get a specific report by ID.
+    Only the author of the report can access it.
+    """
+    report = db.query(Report).options(
+        selectinload(Report.route)
+    ).filter(Report.id == report_id).first()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다.")
+    
+    # Authorization check
+    if report.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="리포트를 볼 권한이 없습니다.")
+
+    return report
+
+
+
