@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     # Use the image from the container registry, with a fallback for local use

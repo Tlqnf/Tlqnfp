@@ -81,15 +81,27 @@ jobs:
             mkdir -p $APP_DIR
             cd $APP_DIR
 
-            if [ ! -f docker-compose.yml ]; then
-              echo "docker-compose.yml not found. Downloading from repository..."
-              curl -L -o docker-compose.yml $REPO_URL/raw/main/docker-compose.yml
-            fi
-            
+            # Always download the latest docker-compose.yml
+            echo "Downloading latest docker-compose.yml..."
+            curl -L -o docker-compose.yml $REPO_URL/raw/main/docker-compose.yml
+
             echo ${{ secrets.CR_PAT }} | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+            # Set environment variables for docker-compose
+            # NOTE: You must set POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
+            # SECRET_KEY, and optionally S3/AWS secrets in your GitHub repository secrets.
             export DOCKER_IMAGE_NAME=ghcr.io/${{ needs.build-and-push.outputs.DOCKER_IMAGE_NAME }}
             export DOCKER_IMAGE_TAG=${{ needs.build-and-push.outputs.DOCKER_IMAGE_TAG }}
+            export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+            export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+            export SECRET_KEY=${{ secrets.SECRET_KEY }}
+            export STORAGE_TYPE=${{ secrets.STORAGE_TYPE }}
+            export S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
+            export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            export AWS_REGION=${{ secrets.AWS_REGION }}
 
-            sudo docker-compose pull
-            sudo docker-compose up -d
+            # Use 'sudo -E' to preserve environment variables
+            sudo -E docker-compose pull
+            sudo -E docker-compose up -d
