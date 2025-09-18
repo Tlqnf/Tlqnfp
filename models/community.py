@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, Enum
+from sqlalchemy import Column, Integer, Boolean, String, Text, ForeignKey, DateTime, func, Float, ARRAY
 from sqlalchemy.orm import relationship
 from database import Base
 import enum
@@ -17,6 +17,12 @@ class Post(Base):
     route_id = Column(Integer, ForeignKey("routes.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    hash_tag = Column(ARRAY(String(10)), nullable=True)
+    public = Column(Boolean, default=False)
+
+    speed = Column(Float)
+    distance = Column(Float)
+    time = Column(DateTime(timezone=True))
 
     author = relationship("User", back_populates="posts")
     route = relationship("Route", back_populates="posts")

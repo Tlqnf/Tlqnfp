@@ -57,3 +57,8 @@ def update_my_profile(
     db.refresh(current_user) # Refresh to get any database-generated updates (e.g., updated_at)
     
     return current_user
+
+@router.get("/mention/check", response_model=bool)
+def check(user: str, db: Session = Depends(get_db)):
+    mention_user = db.query(User).filter(User.username == user).first()
+    return mention_user is not None

@@ -36,6 +36,11 @@ class PostResponse(BaseModel):
     route: Optional[RouteWithReportsResponse] = None
     created_at: datetime
     images: List[Image] = []
+    hash_tag: List[str]  # 해시태그 리스트
+    public: bool  # 공개 여부
+    speed: Optional[float] = None  # 속도 (Optional)
+    distance: Optional[float] = None  # 거리 (Optional)
+    time: Optional[float] = None  # 시간 (Optional)
 
     class Config:
         from_attributes = True
@@ -45,6 +50,14 @@ class PostCreate(BaseModel):
     title: str
     content: str
     route_id: Optional[int] = None
+    hash_tag: List[str]  # 해시태그 리스트 (List of strings)
+    public: bool  # 공개 여부
+    speed: Optional[float] = None  # 속도 (Optional)
+    distance: Optional[float] = None  # 거리 (Optional)
+    time: Optional[float] = None  # 시간 (Optional)
+
+    class Config:
+        from_attributes = True  # 변경된 부분
 
 
 class PostUpdate(BaseModel):
@@ -56,6 +69,7 @@ class PostUpdate(BaseModel):
 class CommentCreate(BaseModel):
     content: str
     parent_id: Optional[int] = None
+    post_id: Optional[int] = None
 
 class CommentUpdate(BaseModel):
     content: str
@@ -65,9 +79,8 @@ class Comment(BaseModel):
     content: str
     user_id: int
     post_id: int
-    parent_id: Optional[int] = None
-    created_at: datetime
-    children: List["Comment"] = []
+    like_count: int
+    comment_count: int
 
     class Config:
         from_attributes = True
@@ -85,9 +98,25 @@ class AllPostResponse(BaseModel):
     route_id: Optional[int] = None
     route: Optional[Route] = None
     reports: List[AllReportResponse] = []
-    comments: List[Comment] = []
+    comments_amount: int
     images: List[Image] = []
+    speed: Optional[float] = None  # 속도 (Optional)
+    distance: Optional[float] = None  # 거리 (Optional)
+    time: Optional[float] = None  # 시간 (Optional)
 
     class Config:
         from_attributes = True
         json_encoders = {datetime: convert_datetime_to_korea_time} # Add this
+
+class CommentResponse(BaseModel):
+    id: int
+    user_id: int
+    content: str
+    post_id: Optional[int]
+    parent_id: Optional[int]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True
+

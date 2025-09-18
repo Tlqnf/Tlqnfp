@@ -4,16 +4,19 @@ from typing import List, Optional
 import uuid
 import json # Add this import
 from pydantic import ValidationError # Add this import
+from sqlalchemy import func
 
 from models import Post, Comment, Route, User, Image
 from schemas.community import (
-    PostCreate, PostUpdate, PostResponse,
+    PostCreate, PostUpdate, PostResponse, CommentResponse,
     CommentCreate, CommentUpdate, Comment as CommentSchema, AllPostResponse
 )
 from database import get_db
 from utils.auth import get_current_user
 from storage.base import BaseStorage
 from dependencies import get_storage_manager
+
+from utill.comment import get_replies
 
 router = APIRouter(prefix="/post", tags=["community"])
 
@@ -27,17 +30,6 @@ def get_boards(db: Session = Depends(get_db)):
     ).all()
     return posts
 
-@router.get("/{post_id}", response_model=AllPostResponse)
-def get_board(post_id: int, db: Session = Depends(get_db)):
-    post = db.query(Post).options(
-        selectinload(Post.images),
-        selectinload(Post.comments),
-        selectinload(Post.route).selectinload(Route.reports)
-    ).filter(Post.id == post_id).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-    return post
-
 
 @router.post("", response_model=PostResponse)
 def create_board(
@@ -45,7 +37,7 @@ def create_board(
     current_user: User = Depends(get_current_user),
     storage: BaseStorage = Depends(get_storage_manager),
     post_data: str = Form(...),
-    images: List[UploadFile] = File(...)
+    images: List[UploadFile] = File(...),
 ):
     # Parse post_data as JSON and validate with PostCreate schema
     try:
@@ -66,7 +58,12 @@ def create_board(
         title=post_create_schema.title,
         content=post_create_schema.content,
         route_id=post_create_schema.route_id,
-        user_id=current_user.id
+        user_id=current_user.id,
+        hash_tag=post_create_schema.hash_tag,  # List of hashtags
+        public=post_create_schema.public,  # Public field
+        speed=post_create_schema.speed,  # Speed
+        distance=post_create_schema.distance,  # Distance
+        time = post_create_schema.time,
     )
     db.add(new_post)
     db.commit()
@@ -78,14 +75,14 @@ def create_board(
             # Generate a unique filename
             file_extension = image.filename.split(".")[-1]
             filename = f"{uuid.uuid4()}.{file_extension}"
-            
+
             # Save the file using the storage manager
             image_url = storage.save(file=image, filename=filename)
-            
+
             # Create the Image record
             new_image = Image(url=image_url, post_id=new_post.id)
             db.add(new_image)
-        
+
         db.commit()
         db.refresh(new_post) # Refresh again to load the new images relationship
 
@@ -127,16 +124,14 @@ def recommend_post(post_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "좋아요 증가", "like_count": post.like_count}
 
-
-@router.post("/{post_id}/read")
-def read_board(post_id: int, db: Session = Depends(get_db)):
+@router.post("/{post_id}/unlike")
+def recommend_post(post_id: int, db: Session = Depends(get_db)):
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-    post.read_count += 1
+    post.like_count -= 1
     db.commit()
-    return {"message": "조회수 증가", "read_count": post.read_count}
-
+    return {"message": "좋아요 감소", "like_count": post.like_count}
 
 # ---------------------- 댓글 ----------------------
 @router.post("/{post_id}/comments", response_model=CommentSchema)
@@ -164,12 +159,38 @@ def create_comment(post_id: int, comment: CommentCreate, db: Session = Depends(g
     return new_comment
 
 
-@router.get("/comments/{comment_id}", response_model=CommentSchema)
-def get_comment(comment_id: int, db: Session = Depends(get_db)):
-    comment = db.query(Comment).filter(Comment.id == comment_id).first()
-    if not comment:
+@router.get("/{post_id}/comments", response_model=list[CommentSchema])
+def get_all_comment(post_id: int, db: Session = Depends(get_db)):
+    # 댓글 + 대댓글 개수 계산
+    comments = (
+        db.query(
+            Comment,
+            func.count(Comment.children).label("comment_count")  # children 관계 기준 카운트
+        )
+        .filter(Comment.post_id == post_id, Comment.parent_id == None)  # 최상위 댓글만
+        .outerjoin(Comment.children)
+        .group_by(Comment.id)
+        .all()
+    )
+
+    if not comments:
         raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
-    return comment
+
+    # 반환 형식 맞추기
+    result = []
+    for comment, count in comments:
+        result.append(
+            CommentSchema(
+                id=comment.id,
+                content=comment.content,
+                user_id=comment.user_id,
+                post_id=comment.post_id,
+                like_count=comment.like_count if hasattr(comment, "like_count") else 0,
+                comment_count=count
+            )
+        )
+
+    return result
 
 
 @router.patch("/comments/{comment_id}", response_model=CommentSchema)
@@ -195,3 +216,104 @@ def delete_comment(comment_id: int, db: Session = Depends(get_db), current_user:
     db.delete(comment)
     db.commit()
     return {"message": "댓글 삭제 성공"}
+
+
+#대댓글
+
+def serialize_reply(comment: Comment):
+    return {
+        "id": comment.id,
+        "content": comment.content,
+        "author": comment.author.username,
+        "created_at": comment.created_at,
+        "like_count": comment.like_count,
+        "profile":comment.author.profile_pic
+    }
+
+@router.get("/comments/{comment_id}", response_model=List[CommentResponse])
+def read_replies(comment_id: int, db: Session = Depends(get_db)):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    replies = get_replies(db, comment_id)
+
+    # depth=1만 표시
+    return [serialize_reply(r) for r in replies]
+
+
+# -------------------------------
+# Create (댓글 / 대댓글)
+# -------------------------------
+@router.post("/comments", response_model=CommentResponse)
+def create_comment(comment: CommentCreate, user_id: int = 1, db: Session = Depends(get_db)):
+    """
+    댓글 또는 대댓글 작성
+    depth=1 제한: 대댓글의 대댓글은 생성 불가
+    """
+    if comment.parent_id:
+        parent = db.query(Comment).filter(Comment.id == comment.parent_id).first()
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent comment not found")
+        if parent.parent_id is not None:
+            raise HTTPException(status_code=400, detail="Cannot reply to a reply (depth=1 limit)")
+
+    new_comment = Comment(
+        content=comment.content,
+        user_id=user_id,
+        post_id=comment.post_id,
+        parent_id=comment.parent_id
+    )
+    db.add(new_comment)
+    db.commit()
+    db.refresh(new_comment)
+    return new_comment
+
+
+# -------------------------------
+# Update (댓글 / 대댓글 수정)
+# -------------------------------
+@router.put("/comments/{comment_id}", response_model=CommentResponse)
+def update_comment(comment_id: int, comment_update: CommentUpdate, db: Session = Depends(get_db)):
+    db_comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not db_comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    db_comment.content = comment_update.content
+    db.commit()
+    db.refresh(db_comment)
+    return db_comment
+
+
+# -------------------------------
+# Delete (댓글 / 대댓글 삭제)
+# -------------------------------
+@router.delete("/comments/{comment_id}")
+def delete_comment(comment_id: int, db: Session = Depends(get_db)):
+    db_comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not db_comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    db.delete(db_comment)
+    db.commit()
+    return {"detail": "Comment deleted"}
+
+#댓글 좋아요
+@router.post("/{comment_id}/like")
+def recommend_post(comment_id: int, db: Session = Depends(get_db)):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+    comment.like_count += 1
+    db.commit()
+    return {"message": "좋아요 감소", "like_count": comment.like_count}
+
+#댓글 좋아요 취소
+@router.post("/{comment_id}/unlike")
+def recommend_post(comment_id: int, db: Session = Depends(get_db)):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+    comment.like_count -= 1
+    db.commit()
+    return {"message": "좋아요 감소", "like_count": comment.like_count}
