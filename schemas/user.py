@@ -29,3 +29,6 @@ class TokenUserResponse(BaseModel):
 
 class FCMTokenUpdate(BaseModel):
     fcm_token: Optional[str] = None
+
+class ProfileDescriptionStatus(BaseModel):
+    is_null: bool

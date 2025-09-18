@@ -55,7 +55,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads") # Add th
 # Apply HTTPBearer dependency to authenticated routers
 app.include_router(community.router, dependencies=[Depends(oauth2_scheme)])
 app.include_router(report.router, dependencies=[Depends(oauth2_scheme)])
-app.include_router(live_record.router, dependencies=[Depends(oauth2_scheme)])
+app.include_router(live_record.router)
 app.include_router(route.router, dependencies=[Depends(oauth2_scheme)])
 app.include_router(oauth.router) # OAuth router handles authentication itself, no need for external dependency
 app.include_router(navigation.router, dependencies=[Depends(oauth2_scheme)])

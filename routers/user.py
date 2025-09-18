@@ -8,7 +8,7 @@ from pydantic import ValidationError # Add this import
 
 from database import get_db
 from models.user import User
-from schemas.user import UserUpdate, UserResponse, FCMTokenUpdate
+from schemas.user import UserUpdate, UserResponse, FCMTokenUpdate, ProfileDescriptionStatus
 from utils.auth import get_current_user
 from storage.base import BaseStorage # Import BaseStorage
 from dependencies import get_storage_manager # Import get_storage_manager
@@ -91,3 +91,11 @@ def logout(db: Session = Depends(get_db), current_user: User = Depends(get_curre
     db.commit()
     db.refresh(current_user)
     return {"message": "FCM token cleared successfully."}
+
+@router.get("/me/profile-description-status", response_model=ProfileDescriptionStatus)
+def get_profile_description_status(current_user: User = Depends(get_current_user)):
+    """
+    현재 로그인한 사용자의 프로필 설명(profile_description)이 null인지 여부를 반환합니다.
+    """
+    is_null = current_user.profile_description is None
+    return ProfileDescriptionStatus(is_null=is_null)
