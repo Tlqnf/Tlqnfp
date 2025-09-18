@@ -45,6 +45,8 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
 
     steps:
       - name: Deploy to Server
@@ -85,17 +87,11 @@ jobs:
             echo "Downloading latest docker-compose.yml..."
             curl -f -L -o docker-compose.yml $REPO_URL/raw/main/docker-compose.yml
 
-            # Check if CR_PAT secret is set
-            if [ -z "${{ secrets.CR_PAT }}" ]; then
-              echo "Error: The CR_PAT secret is not set in the GitHub repository."
-              exit 1
-            fi
-
-            # Log in to GitHub Container Registry
+            # Log in to GitHub Container Registry using the GITHUB_TOKEN
             echo "Logging in to GitHub Container Registry..."
-            echo ${{ secrets.CR_PAT }} | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo ${{ secrets.GITHUB_TOKEN }} | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
             if [ $? -ne 0 ]; then
-              echo "Error: Docker login failed. Check if CR_PAT is a valid Personal Access Token with read:packages scope."
+              echo "Error: Docker login failed."
               exit 1
             fi
             echo "Login successful."
