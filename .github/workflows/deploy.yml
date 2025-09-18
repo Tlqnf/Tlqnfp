@@ -82,6 +82,10 @@ jobs:
             echo "Downloading latest docker-compose.yml..."
             curl -f -L -o docker-compose.yml $REPO_URL/raw/main/docker-compose.yml
 
+            # Simplify docker-compose.yml interpolation to prevent parsing errors
+            echo "Simplifying docker-compose.yml interpolation..."
+            sed -i 's/${DOCKER_IMAGE_TAG:-latest}/${DOCKER_IMAGE_TAG}/g' docker-compose.yml
+
             # Log in to Docker Hub
             echo "Logging in to Docker Hub..."
             echo ${{ secrets.DOCKERHUB_TOKEN }} | sudo docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
@@ -90,10 +94,6 @@ jobs:
               exit 1
             fi
             echo "Login successful."
-
-            # Print resolved image info from previous job outputs
-            echo "Resolved image name: ${{ needs.build-and-push.outputs.DOCKER_IMAGE_NAME }}"
-            echo "Resolved image tag : ${{ needs.build-and-push.outputs.DOCKER_IMAGE_TAG }}"
 
             # Create .env file for docker-compose to use
             echo "Creating .env file for docker-compose..."
@@ -117,9 +117,6 @@ jobs:
             echo "KAKAO_CLIENT_ID=${{ secrets.KAKAO_CLIENT_ID }}" >> .env
             echo "KAKAO_CLIENT_SECRET=${{ secrets.KAKAO_CLIENT_SECRET }}" >> .env
             echo "KAKAO_REDIRECT_URI=${{ secrets.KAKAO_REDIRECT_URI }}" >> .env
-
-            echo "--- .env content (redacted tokens may appear as set) ---"
-            cat .env
 
             echo "Pulling Docker images..."
             sudo docker-compose pull
