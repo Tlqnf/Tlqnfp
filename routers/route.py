@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from database import get_db
 from models import Route, User
 import schemas.route as route_schema
@@ -18,16 +18,30 @@ def get_routes(db: Session = Depends(get_db)):
     return routes
 
 @router.get("/me/bookmarked", response_model=List[route_schema.Route])
-def get_my_bookmarked_routes(current_user: User = Depends(get_current_user)):
+def get_my_bookmarked_routes(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(4, ge=1, le=100)
+):
     """현재 사용자가 북마크한 모든 경로의 목록을 반환합니다."""
-    return current_user.bookmarked_routes
+    skip = (page - 1) * page_size
+    bookmarked_routes_query = db.query(Route).join(User.bookmarked_routes).filter(User.id == current_user.id)
+    bookmarked_routes = bookmarked_routes_query.order_by(Route.created_at.desc()).offset(skip).limit(page_size).all()
+    return bookmarked_routes
 
 
 
 @router.get("/me", response_model=List[route_schema.Route])
-def get_my_routes(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_my_routes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(4, ge=1, le=100)
+):
     """특정 유저의 경로를 불러올 수 있음."""
-    routes = db.query(Route).filter(Route.user_id == current_user.id).all()
+    skip = (page - 1) * page_size
+    routes = db.query(Route).filter(Route.user_id == current_user.id).order_by(Route.created_at.desc()).offset(skip).limit(page_size).all()
     return routes
 
 @router.get("/{route_id}", response_model=route_schema.Route)

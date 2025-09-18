@@ -120,12 +120,15 @@ def get_weekly_report_summary(db: Session = Depends(get_db), current_user: User 
     ).all()
 
     routes_taken_count = len(reports)
-    total_activity_time_minutes = round(sum(report.health_time for report in reports) / 60) # Convert seconds to minutes and round
+    total_activity_time_total_minutes = sum(report.health_time for report in reports) / 60 # Convert seconds to minutes (float)
+    total_activity_time_hours = int(total_activity_time_total_minutes // 60)
+    total_activity_time_remaining_minutes = round(total_activity_time_total_minutes % 60)
     total_activity_distance_km = sum(report.distance for report in reports) / 1000 # Convert meters to kilometers
 
     return WeeklyReportSummary(
         routes_taken_count=routes_taken_count,
-        total_activity_time_minutes=total_activity_time_minutes,
+        total_activity_time_hours=total_activity_time_hours,
+        total_activity_time_remaining_minutes=total_activity_time_remaining_minutes,
         total_activity_distance_km=total_activity_distance_km
     )
 

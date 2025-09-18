@@ -89,5 +89,6 @@ class ReportWithRouteResponse(BaseModel):
 
 class WeeklyReportSummary(BaseModel):
     routes_taken_count: int
-    total_activity_time_minutes: float
+    total_activity_time_hours: int
+    total_activity_time_remaining_minutes: int
     total_activity_distance_km: float

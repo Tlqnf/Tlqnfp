@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 import uuid
@@ -23,12 +23,17 @@ router = APIRouter(prefix="/post", tags=["community"])
 
 # ---------------------- 게시글 ----------------------
 @router.get("", response_model=list[PostResponse])
-def get_boards(db: Session = Depends(get_db)):
+def get_boards(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(3, ge=1, le=100)
+):
+    skip = (page - 1) * page_size
     posts = db.query(Post).options(
         selectinload(Post.images),
         selectinload(Post.report).selectinload(Report.route),
         selectinload(Post.author) # Load the author relationship
-    ).all()
+    ).order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
     return posts
 
 
