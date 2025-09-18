@@ -6,7 +6,7 @@ import json # Add this import
 from pydantic import ValidationError # Add this import
 from sqlalchemy import func
 
-from models import Post, Comment, Route, User, Image
+from models import Post, Comment, Route, User, Image, Report, Mention, Notification
 from schemas.community import (
     PostCreate, PostUpdate, PostResponse, CommentResponse,
     CommentCreate, CommentUpdate, Comment as CommentSchema, AllPostResponse
@@ -26,7 +26,8 @@ router = APIRouter(prefix="/post", tags=["community"])
 def get_boards(db: Session = Depends(get_db)):
     posts = db.query(Post).options(
         selectinload(Post.images),
-        selectinload(Post.route).options(selectinload(Route.reports))
+        selectinload(Post.report).selectinload(Report.route),
+        selectinload(Post.author) # Load the author relationship
     ).all()
     return posts
 
@@ -39,7 +40,6 @@ def create_board(
     post_data: str = Form(...),
     images: List[UploadFile] = File(...),
 ):
-    # Parse post_data as JSON and validate with PostCreate schema
     try:
         post_data_dict = json.loads(post_data)
         post_create_schema = PostCreate(**post_data_dict)
@@ -48,43 +48,35 @@ def create_board(
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
 
-    if post_create_schema.route_id:
-        route = db.query(Route).filter(Route.id == post_create_schema.route_id).first()
-        if not route:
-            raise HTTPException(status_code=404, detail="연결하려는 경로를 찾을 수 없습니다.")
+    if post_create_schema.report_id:
+        report = db.query(Report).filter(Report.id == post_create_schema.report_id).first()
+        if not report:
+            raise HTTPException(status_code=404, detail="연결하려는 리포트를 찾을 수 없습니다.")
 
-    # 1. Create the Post object
     new_post = Post(
         title=post_create_schema.title,
         content=post_create_schema.content,
-        route_id=post_create_schema.route_id,
+        report_id=post_create_schema.report_id,
         user_id=current_user.id,
-        hash_tag=post_create_schema.hash_tag,  # List of hashtags
-        public=post_create_schema.public,  # Public field
-        speed=post_create_schema.speed,  # Speed
-        distance=post_create_schema.distance,  # Distance
-        time = post_create_schema.time,
+        hash_tag=post_create_schema.hash_tag,
+        public=post_create_schema.public,
+        speed=post_create_schema.speed,
+        distance=post_create_schema.distance,
+        time=post_create_schema.time,
     )
     db.add(new_post)
     db.commit()
     db.refresh(new_post)
 
-    # 2. Save images and create Image records
     if images:
         for image in images:
-            # Generate a unique filename
             file_extension = image.filename.split(".")[-1]
             filename = f"{uuid.uuid4()}.{file_extension}"
-
-            # Save the file using the storage manager
-            image_url = storage.save(file=image, filename=filename)
-
-            # Create the Image record
+            image_url = storage.save(file=image, filename=filename, folder="board")
             new_image = Image(url=image_url, post_id=new_post.id)
             db.add(new_image)
-
         db.commit()
-        db.refresh(new_post) # Refresh again to load the new images relationship
+        db.refresh(new_post)
 
     return new_post
 
@@ -117,6 +109,7 @@ def delete_board(post_id: int, db: Session = Depends(get_db), current_user: User
 
 @router.post("/{post_id}/like")
 def recommend_post(post_id: int, db: Session = Depends(get_db)):
+    print(post_id)
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
@@ -245,8 +238,40 @@ def read_replies(comment_id: int, db: Session = Depends(get_db)):
 # -------------------------------
 # Create (댓글 / 대댓글)
 # -------------------------------
+# import firebase_admin
+# from firebase_admin import credentials, messaging
+#
+# # Initialize Firebase Admin SDK (only once)
+# # Replace 'path/to/your/serviceAccountKey.json' with the actual path to your Firebase service account key file.
+# # It's recommended to store this path in an environment variable.
+# try:
+#     cred = credentials.Certificate('path/to/your/serviceAccountKey.json')
+#     firebase_admin.initialize_app(cred)
+# except ValueError:
+#     # App is already initialized, which can happen in development with hot-reloading
+#     pass
+#
+# def send_push_notification(db: Session, user: User, device_token: str, message: str):
+#     try:
+#         message_obj = messaging.Message(
+#             notification=messaging.Notification(
+#                 title='새로운 멘션 알림',
+#                 body=message,
+#             ),
+#             token=device_token,
+#         )
+#         response = messaging.send(message_obj)
+#         print('Successfully sent message:', response)
+#     except messaging.UnregisteredError:
+#         print(f"FCM token for user {user.id} is unregistered. Clearing token.")
+#         user.fcm_token = None
+#         db.add(user)
+#         db.commit()
+#     except Exception as e:
+#         print(f"Error sending message: {e}")
+
 @router.post("/comments", response_model=CommentResponse)
-def create_comment(comment: CommentCreate, user_id: int = 1, db: Session = Depends(get_db)):
+def create_comment(comment: CommentCreate, user_id: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     댓글 또는 대댓글 작성
     depth=1 제한: 대댓글의 대댓글은 생성 불가
@@ -260,13 +285,44 @@ def create_comment(comment: CommentCreate, user_id: int = 1, db: Session = Depen
 
     new_comment = Comment(
         content=comment.content,
-        user_id=user_id,
+        user_id=user_id.id,
         post_id=comment.post_id,
         parent_id=comment.parent_id
     )
     db.add(new_comment)
     db.commit()
     db.refresh(new_comment)
+
+    # 멘션 처리 및 알림 생성
+    for mentioned_username in comment.mentions:
+        mentioned_user = db.query(User).filter(User.username == mentioned_username).first()
+        if not mentioned_user:
+            continue  # 존재하지 않는 유저는 무시
+
+        # Mention 기록
+        mention = Mention(comment_id=new_comment.id, user_id=mentioned_user.id)
+        db.add(mention)
+
+        # Notification 생성
+        notification = Notification(
+            user_id=mentioned_user.id,
+            comment_id=new_comment.id,
+            type="mention",
+            message=f"{user_id.username}님이 회원님을 멘션했습니다."
+        )
+        db.add(notification)
+
+        # 푸시 알림 전송 (User 모델에 phone_token 필드가 있다고 가정)
+        if hasattr(mentioned_user, 'fcm_token') and mentioned_user.fcm_token:
+            send_push_notification(
+                db=db,
+                user=mentioned_user,
+                device_token=mentioned_user.fcm_token,
+                message=f"{user_id.username}님이 댓글에서 회원님을 멘션했습니다."
+            )
+
+    db.commit() # Commit all mentions and notifications
+    db.refresh(new_comment) # Refresh again after adding mentions/notifications
     return new_comment
 
 

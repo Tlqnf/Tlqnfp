@@ -25,7 +25,6 @@ class Route(Base):
 
     author = relationship("User", back_populates="routes")
     reports = relationship("Report", back_populates="route", cascade="all, delete-orphan")
-    posts = relationship("Post", back_populates="route", cascade="all, delete-orphan")
     bookmarked_by_users = relationship(
         "User",
         secondary=bookmarked_routes,

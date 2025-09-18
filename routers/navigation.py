@@ -6,10 +6,42 @@ from models import Route
 import httpx
 import os
 from pydantic import BaseModel # Import BaseModel for response model
+import json
 
 router = APIRouter(prefix="/navigation", tags=["navigation"])
 
 VALHALLA_URL = os.getenv("VALHALLA_URL")
+
+def filter_navigation_instructions(data):
+    instructions = data.get("instructions", [])
+
+    # Filter out duplicate consecutive instructions
+    filtered_instructions = []
+    last_instruction = None
+    for instruction in instructions:
+        if instruction != last_instruction:
+            filtered_instructions.append(instruction)
+            last_instruction = instruction
+
+    # Remove all "목적지에 도착했습니다." except for the last one
+    final_instructions = []
+    destination_message = "목적지에 도착했습니다."
+
+    # Count occurrences of the destination message
+    destination_count = filtered_instructions.count(destination_message)
+
+    if destination_count > 0:
+        # Add all instructions except the destination message
+        for instruction in filtered_instructions:
+            if instruction != destination_message:
+                final_instructions.append(instruction)
+        # Add the destination message once at the very end
+        final_instructions.append(destination_message)
+    else:
+        final_instructions = filtered_instructions
+
+    data["instructions"] = final_instructions
+    return data
 
 async def get_valhalla_route(locations: list[dict], costing: str = "bicycle"):
     if not VALHALLA_URL:
@@ -52,9 +84,13 @@ def parse_valhalla_instructions(valhalla_response: dict) -> dict:
         "Make a sharp right.": "급우회전하세요.",
         "Continue.": "계속 주행하세요.",
         "You have arrived at your destination.": "목적지에 도착했습니다.",
+        "Keep left at the fork.": "갈림길에서 좌측을 유지하세요.",
+        "Keep right at the fork.": "갈림길에서 우측을 유지하세요.",
     }
     translation_prefixes = {
         "Bike north on": "북쪽으로 계속 주행하세요:",
+        "Bear left onto": "좌회전하여 진입하세요:",
+        "Bear right onto": "우회전하여 진입하세요:",
         "Bike northwest on": "북서쪽으로 계속 주행하세요:",
         "Bike west on": "서쪽으로 계속 주행하세요:",
         "Bike southwest on": "남서쪽으로 계속 주행하세요:",
@@ -64,6 +100,8 @@ def parse_valhalla_instructions(valhalla_response: dict) -> dict:
         "Bike northeast on": "북동쪽으로 계속 주행하세요:",
         "Turn left onto": "좌회전하여 진입하세요:",
         "Turn right onto": "우회전하여 진입하세요:",
+        "Turn left to stay on": "좌회전하여 유지하세요:",
+        "Turn right to stay on": "우회전하여 유지하세요:",
         "Continue on": "계속 주행하세요:",
         "Bear left to stay on": "왼쪽으로 주행하여 유지하세요:",
         "Bear right to stay on": "오른쪽으로 주행하여 유지하세요:",
@@ -149,7 +187,10 @@ async def guide_existing_route(request: GuideRouteRequest, db: Session = Depends
     valhalla_response = await get_valhalla_route(locations)
     parsed_instructions = parse_valhalla_instructions(valhalla_response)
     
-    return parsed_instructions
+    # Apply filtering logic
+    filtered_parsed_instructions = filter_navigation_instructions(parsed_instructions)
+    
+    return filtered_parsed_instructions
 
 class GuideDestinationRequest(BaseModel):
     start_lat: float
@@ -174,7 +215,10 @@ async def guide_to_destination(request: GuideDestinationRequest,
     valhalla_response = await get_valhalla_route(locations)
     parsed_instructions = parse_valhalla_instructions(valhalla_response)
 
-    return parsed_instructions
+    # Apply filtering logic
+    filtered_parsed_instructions = filter_navigation_instructions(parsed_instructions)
+
+    return filtered_parsed_instructions
 
 class GeocodeResponse(BaseModel):
     lat: float

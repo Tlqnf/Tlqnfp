@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -8,9 +8,11 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    username = Column(String(100), nullable=False)
+    username = Column(String(100), unique=True, nullable=False)
     profile_description = Column(String, nullable=True)
     profile_pic = Column(String, nullable=True)
+    fcm_token = Column(String, nullable=True) # For FCM push notifications
+    fcm_token_updated_at = Column(DateTime(timezone=True), nullable=True)
 
     google_id = Column(String, unique=True, nullable=True)
     naver_id = Column(String, unique=True, nullable=True)
@@ -25,3 +27,5 @@ class User(Base):
         secondary="bookmarked_routes",
         back_populates="bookmarked_by_users"
     )
+    notifications = relationship("Notification", back_populates="user")
+    mentions = relationship("Mention", back_populates="user", cascade="all, delete-orphan")

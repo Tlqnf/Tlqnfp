@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
 from sqlalchemy.orm import Session
 from typing import Optional
+from datetime import datetime, timezone
 import uuid # For unique filenames
 import json # Add this import
 from pydantic import ValidationError # Add this import
 
 from database import get_db
 from models.user import User
-from schemas.user import UserUpdate, UserResponse
+from schemas.user import UserUpdate, UserResponse, FCMTokenUpdate
 from utils.auth import get_current_user
 from storage.base import BaseStorage # Import BaseStorage
 from dependencies import get_storage_manager # Import get_storage_manager
@@ -47,7 +48,7 @@ def update_my_profile(
         filename = f"profile_pic_{current_user.id}_{uuid.uuid4()}.{file_extension}"
         
         # Save the file using the storage manager
-        profile_pic_url = storage.save(file=profile_pic_file, filename=filename)
+        profile_pic_url = storage.save(file=profile_pic_file, filename=filename, folder="profile")
         
         # Update the user's profile_pic URL
         current_user.profile_pic = profile_pic_url
@@ -62,3 +63,31 @@ def update_my_profile(
 def check(user: str, db: Session = Depends(get_db)):
     mention_user = db.query(User).filter(User.username == user).first()
     return mention_user is not None
+
+@router.patch("/me/fcm-token", response_model=UserResponse)
+def update_fcm_token(
+    fcm_token_update: FCMTokenUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    현재 로그인한 사용자의 FCM 토큰을 업데이트합니다.
+    """
+    current_user.fcm_token = fcm_token_update.fcm_token
+    current_user.fcm_token_updated_at = datetime.now(timezone.utc)
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+@router.post("/me/logout", response_model=dict)
+def logout(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    현재 로그인한 사용자의 FCM 토큰을 삭제합니다.
+    """
+    current_user.fcm_token = None
+    current_user.fcm_token_updated_at = None
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return {"message": "FCM token cleared successfully."}

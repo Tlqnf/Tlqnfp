@@ -14,7 +14,7 @@ class Post(Base):
     like_count = Column(Integer, default=0)
     read_count = Column(Integer, default=0)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    route_id = Column(Integer, ForeignKey("routes.id"), nullable=True)
+    report_id = Column(Integer, ForeignKey("reports.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     hash_tag = Column(ARRAY(String(10)), nullable=True)
@@ -25,7 +25,7 @@ class Post(Base):
     time = Column(DateTime(timezone=True))
 
     author = relationship("User", back_populates="posts")
-    route = relationship("Route", back_populates="posts")
+    report = relationship("Report", back_populates="posts")
     comments = relationship(
         "Comment",
         primaryjoin="and_(Post.id == Comment.post_id, Comment.parent_id == None)",
@@ -50,6 +50,7 @@ class Comment(Base):
     parent_id = Column(Integer, ForeignKey("comments.id"), nullable=True)
     parent = relationship("Comment", remote_side=[id], back_populates="children")
     children = relationship("Comment", back_populates="parent", cascade="all, delete-orphan")
+    mentions = relationship("Mention", back_populates="comment", cascade="all, delete-orphan")
 
     author = relationship("User", back_populates="comments")
     post = relationship("Post", back_populates="comments")

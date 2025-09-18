@@ -26,3 +26,6 @@ class TokenUserResponse(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse
+
+class FCMTokenUpdate(BaseModel):
+    fcm_token: Optional[str] = None
