@@ -91,25 +91,33 @@ jobs:
             fi
             echo "Login successful."
 
-            # Set environment variables for docker-compose
-            export DOCKER_IMAGE_NAME=${{ needs.build-and-push.outputs.DOCKER_IMAGE_NAME }}
-            export DOCKER_IMAGE_TAG=${{ needs.build-and-push.outputs.DOCKER_IMAGE_TAG }}
-            export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-            export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-            export SECRET_KEY=${{ secrets.SECRET_KEY }}
-            export STORAGE_TYPE=${{ secrets.STORAGE_TYPE }}
-            export S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
-            export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-            export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-            export AWS_REGION=${{ secrets.AWS_REGION }}
+            # Create .env file for docker-compose to use
+            echo "Creating .env file for docker-compose..."
+            cat > .env <<EOF
+DOCKER_IMAGE_NAME=${{ needs.build-and-push.outputs.DOCKER_IMAGE_NAME }}
+DOCKER_IMAGE_TAG=${{ needs.build-and-push.outputs.DOCKER_IMAGE_TAG }}
+POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+SECRET_KEY=${{ secrets.SECRET_KEY }}
+STORAGE_TYPE=${{ secrets.STORAGE_TYPE }}
+S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
+AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+AWS_REGION=${{ secrets.AWS_REGION }}
+GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+GOOGLE_REDIRECT_URI=${{ secrets.GOOGLE_REDIRECT_URI }}
+NAVER_CLIENT_ID=${{ secrets.NAVER_CLIENT_ID }}
+NAVER_CLIENT_SECRET=${{ secrets.NAVER_CLIENT_SECRET }}
+NAVER_REDIRECT_URI=${{ secrets.NAVER_REDIRECT_URI }}
+KAKAO_CLIENT_ID=${{ secrets.KAKAO_CLIENT_ID }}
+KAKAO_CLIENT_SECRET=${{ secrets.KAKAO_CLIENT_SECRET }}
+KAKAO_REDIRECT_URI=${{ secrets.KAKAO_REDIRECT_URI }}
+EOF
 
-            # Use 'sudo -E' to preserve environment variables and pull the images
-            echo "--- docker-compose.yml content ---"
-            cat docker-compose.yml
-            echo "--- end of content ---"
             echo "Pulling Docker images..."
-            sudo -E docker-compose pull
+            sudo docker-compose pull
             if [ $? -ne 0 ]; then
               echo "Error: docker-compose pull failed. Check image name and permissions."
               exit 1
@@ -117,4 +125,4 @@ jobs:
 
             # Start the services
             echo "Starting services with docker-compose..."
-            sudo -E docker-compose up -d
+            sudo docker-compose up -d
