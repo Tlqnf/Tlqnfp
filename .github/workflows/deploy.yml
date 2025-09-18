@@ -7,9 +7,6 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     outputs:
       DOCKER_IMAGE_NAME: ${{ steps.set_image_name.outputs.DOCKER_IMAGE_NAME }}
       DOCKER_IMAGE_TAG: ${{ steps.set_image_name.outputs.DOCKER_IMAGE_TAG }}
@@ -18,26 +15,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set lower-case image name and tag
+      - name: Set image name and tag
         id: set_image_name
         run: |
-          IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          # Use Docker Hub username and repository name for the image
+          IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}"
           echo "DOCKER_IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_OUTPUT
           echo "DOCKER_IMAGE_TAG=${{ github.sha }}" >> $GITHUB_OUTPUT
 
-      - name: Log in to the Container registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ steps.set_image_name.outputs.DOCKER_IMAGE_NAME }}:${{ steps.set_image_name.outputs.DOCKER_IMAGE_TAG }}
+          tags: ${{ steps.set_image_name.outputs.DOCKER_IMAGE_NAME }}:${{ steps.set_image_name.outputs.DOCKER_IMAGE_TAG }}
           labels: |
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -45,8 +42,6 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    permissions:
-      packages: read
 
     steps:
       - name: Deploy to Server
@@ -87,19 +82,17 @@ jobs:
             echo "Downloading latest docker-compose.yml..."
             curl -f -L -o docker-compose.yml $REPO_URL/raw/main/docker-compose.yml
 
-            # Log in to GitHub Container Registry using the GITHUB_TOKEN
-            echo "Logging in to GitHub Container Registry..."
-            echo ${{ secrets.GITHUB_TOKEN }} | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            # Log in to Docker Hub
+            echo "Logging in to Docker Hub..."
+            echo ${{ secrets.DOCKERHUB_TOKEN }} | sudo docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
             if [ $? -ne 0 ]; then
-              echo "Error: Docker login failed."
+              echo "Error: Docker login failed. Check DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets."
               exit 1
             fi
             echo "Login successful."
 
             # Set environment variables for docker-compose
-            # NOTE: You must set POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
-            # SECRET_KEY, and optionally S3/AWS secrets in your GitHub repository secrets.
-            export DOCKER_IMAGE_NAME=ghcr.io/${{ needs.build-and-push.outputs.DOCKER_IMAGE_NAME }}
+            export DOCKER_IMAGE_NAME=${{ needs.build-and-push.outputs.DOCKER_IMAGE_NAME }}
             export DOCKER_IMAGE_TAG=${{ needs.build-and-push.outputs.DOCKER_IMAGE_TAG }}
             export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
             export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
