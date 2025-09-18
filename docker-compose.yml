@@ -1,7 +1,7 @@
 services:
   app:
     # Use the image from the container registry, with a fallback for local use
-    image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG:-latest}
+    image: ${DOCKER_IMAGE_NAME:kimsee/backend}:${DOCKER_IMAGE_TAG:-latest}
     ports:
       - "8000:8000"
     environment:
@@ -41,7 +41,7 @@ services:
   # Service to run Alembic migrations
   alembic:
     # Use the same application image
-    image: ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG:-latest}
+    image: ${DOCKER_IMAGE_NAME:kimsee/backend}:${DOCKER_IMAGE_TAG:-latest}
     command: ["alembic", "upgrade", "head"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-user}

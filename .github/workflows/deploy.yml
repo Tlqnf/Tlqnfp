@@ -91,6 +91,10 @@ jobs:
             fi
             echo "Login successful."
 
+            # Print resolved image info from previous job outputs
+            echo "Resolved image name: ${{ needs.build-and-push.outputs.DOCKER_IMAGE_NAME }}"
+            echo "Resolved image tag : ${{ needs.build-and-push.outputs.DOCKER_IMAGE_TAG }}"
+
             # Create .env file for docker-compose to use
             echo "Creating .env file for docker-compose..."
             echo "DOCKER_IMAGE_NAME=${{ needs.build-and-push.outputs.DOCKER_IMAGE_NAME }}" > .env
@@ -113,6 +117,9 @@ jobs:
             echo "KAKAO_CLIENT_ID=${{ secrets.KAKAO_CLIENT_ID }}" >> .env
             echo "KAKAO_CLIENT_SECRET=${{ secrets.KAKAO_CLIENT_SECRET }}" >> .env
             echo "KAKAO_REDIRECT_URI=${{ secrets.KAKAO_REDIRECT_URI }}" >> .env
+
+            echo "--- .env content (redacted tokens may appear as set) ---"
+            cat .env
 
             echo "Pulling Docker images..."
             sudo docker-compose pull
