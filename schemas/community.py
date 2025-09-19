@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, computed_field # Add computed_field
+from pydantic import BaseModel, Field, field_validator, computed_field # Add computed_field, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -22,6 +22,7 @@ class PostResponse(BaseModel):
     content: str
     like_count: int
     read_count: int
+    comment_count: int = 0
     user_id: Optional[int] = None
     report: Optional[ReportWithRouteResponse] = None
     created_at: datetime
@@ -31,6 +32,7 @@ class PostResponse(BaseModel):
     speed: Optional[float] = None
     distance: Optional[float] = None
     time: Optional[float] = None
+    map_image_url: Optional[str] = None
     author: Optional[UserResponse] = None # Add author relationship
 
     @computed_field
@@ -53,6 +55,47 @@ class PostResponse(BaseModel):
     class Config:
         from_attributes = True
         json_encoders = {datetime: convert_datetime_to_korea_time}
+
+class PostSummaryResponse(BaseModel):
+    id: int
+    title: str
+    distance: Optional[float] = None
+    created_at: datetime # Original datetime for internal use
+    report: Optional[ReportWithRouteResponse] = Field(None, exclude=True) # Exclude from output
+
+    @computed_field
+    @property
+    def time_hour(self) -> Optional[int]:
+        if self.report and self.report.health_time is not None:
+            total_seconds = self.report.health_time
+            return total_seconds // 3600 # Convert seconds to hours
+        return None
+
+    @computed_field
+    @property
+    def time_minute(self) -> Optional[int]:
+        if self.report and self.report.health_time is not None:
+            total_seconds = self.report.health_time
+            return (total_seconds % 3600) // 60 # Remaining seconds converted to minutes
+        return None
+
+    @computed_field
+    @property
+    def created_at_korea(self) -> Optional[str]:
+        if self.created_at:
+            # Ensure created_at is timezone-aware, assuming it's stored in UTC if naive
+            if self.created_at.tzinfo is None:
+                utc_dt = self.created_at.replace(tzinfo=ZoneInfo("UTC"))
+            else:
+                utc_dt = self.created_at.astimezone(ZoneInfo("UTC"))
+            return convert_datetime_to_korea_time(utc_dt)
+        return None
+
+    comment_count: int = 0 # Add comment_count
+    map_image_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class PostCreate(BaseModel):
     title: str

@@ -10,7 +10,8 @@ from starlette import status
 from models import Post, Comment, Route, User, Image, Report, Mention, Notification
 from schemas.community import (
     PostCreate, PostUpdate, PostResponse, CommentResponse,
-    CommentCreate, CommentUpdate, Comment as CommentSchema, AllPostResponse
+    CommentCreate, CommentUpdate, Comment as CommentSchema, AllPostResponse,
+    PostSummaryResponse # Add PostSummaryResponse
 )
 from database import get_db
 from utils.auth import get_current_user
@@ -31,12 +32,24 @@ def get_boards(
     page_size: int = Query(10, ge=1, le=100)
 ):
     skip = (page - 1) * page_size
-    posts = db.query(Post).options(
+
+    comment_count_subquery = db.query(
+        Comment.post_id,
+        func.count(Comment.id).label("comment_count")
+    ).group_by(Comment.post_id).subquery()
+
+    posts_with_comment_count = (db.query(Post).options(
         selectinload(Post.images),
         selectinload(Post.report).selectinload(Report.route),
-        selectinload(Post.author) # Load the author relationship
-    ).filter(Post.public == True).order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
-    return posts
+        selectinload(Post.author)
+    ).outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
+                                .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count"))
+                                .filter(Post.public == True).order_by(Post.created_at.desc()).offset(skip).limit(page_size).all())
+
+    return [
+        PostResponse.model_validate(post, update={'comment_count': count})
+        for post, count in posts_with_comment_count
+    ]
 
 
 @router.post("", response_model=PostResponse)
@@ -46,6 +59,7 @@ def create_board(
     storage: BaseStorage = Depends(get_storage_manager),
     post_data: str = Form(...),
     images: List[UploadFile] = File(...),
+    map_image: Optional[UploadFile] = File(None),
 ):
     try:
         post_data_dict = json.loads(post_data)
@@ -75,6 +89,15 @@ def create_board(
     db.commit()
     db.refresh(new_post)
 
+    if map_image and map_image.filename:
+        file_extension = map_image.filename.split(".")[-1]
+        filename = f"map_{uuid.uuid4()}.{file_extension}"
+        map_image_url = storage.save(file=map_image, filename=filename, folder="board")
+        new_post.map_image_url = map_image_url
+        db.add(new_post) # Add new_post to session to track changes
+        db.commit()
+        db.refresh(new_post)
+
     if images:
         for image in images:
             file_extension = image.filename.split(".")[-1]
@@ -89,7 +112,14 @@ def create_board(
 
 
 @router.patch("/{post_id}", response_model=PostResponse)
-def update_board(post_id: int, post_update: PostUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def update_board(
+    post_id: int,
+    post_update: PostUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    map_image: Optional[UploadFile] = File(None),
+    storage: BaseStorage = Depends(get_storage_manager),
+):
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
@@ -97,6 +127,13 @@ def update_board(post_id: int, post_update: PostUpdate, db: Session = Depends(ge
         raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
     for key, value in post_update.dict(exclude_unset=True).items():
         setattr(post, key, value)
+
+    if map_image and map_image.filename:
+        file_extension = map_image.filename.split(".")[-1]
+        filename = f"map_{uuid.uuid4()}.{file_extension}"
+        map_image_url = storage.save(file=map_image, filename=filename, folder="board")
+        post.map_image_url = map_image_url
+
     db.commit()
     db.refresh(post)
     return post
@@ -302,7 +339,7 @@ def recommend_post(comment_id: int, db: Session = Depends(get_db)):
     return {"message": "좋아요 감소", "like_count": comment.like_count}
 
 
-@router.get("/me/bookmarked", response_model=List[PostResponse])
+@router.get("/me/bookmarked", response_model=List[PostSummaryResponse])
 def get_my_bookmarked_posts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -311,12 +348,26 @@ def get_my_bookmarked_posts(
 ):
     """현재 사용자가 북마크한 모든 게시글의 목록을 반환합니다."""
     skip = (page - 1) * page_size
-    bookmarked_posts_query = db.query(Post).join(User.bookmarked_posts).filter(User.id == current_user.id)
-    bookmarked_posts = bookmarked_posts_query.order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
-    return bookmarked_posts
+
+    comment_count_subquery = db.query(
+        Comment.post_id,
+        func.count(Comment.id).label("comment_count")
+    ).group_by(Comment.post_id).subquery()
+
+    bookmarked_posts_with_comment_count = (((((db.query(Post)
+                                           .options(selectinload(Post.report), selectinload(Post.images)))
+                                           .join(User.bookmarked_posts).filter(User.id == current_user.id))
+                                           .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id))
+                                           .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count")))
+                                           .order_by(Post.created_at.desc()).offset(skip).limit(page_size).all())
+
+    return [
+        PostSummaryResponse.model_validate(post, update={'comment_count': count})
+        for post, count in bookmarked_posts_with_comment_count
+    ]
 
 
-@router.get("/me/posts", response_model=List[PostResponse])
+@router.get("/me/posts", response_model=List[PostSummaryResponse])
 def get_my_posts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -325,29 +376,71 @@ def get_my_posts(
 ):
     """현재 사용자가 작성한 모든 게시글의 목록을 반환합니다."""
     skip = (page - 1) * page_size
-    posts_query = db.query(Post).filter(Post.user_id == current_user.id)
-    my_posts = posts_query.order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
-    return my_posts
+
+    comment_count_subquery = db.query(
+        Comment.post_id,
+        func.count(Comment.id).label("comment_count")
+    ).group_by(Comment.post_id).subquery()
+
+    my_posts_with_comment_count = (((((db.query(Post)
+                                   .options(selectinload(Post.report), selectinload(Post.images)))
+                                   .filter(Post.user_id == current_user.id))
+                                   .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id))
+                                   .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count")))
+                                   .order_by(Post.created_at.desc()).offset(skip).limit(page_size).all())
+
+    return [
+        PostSummaryResponse.model_validate(post, update={'comment_count': count})
+        for post, count in my_posts_with_comment_count
+    ]
 
 
-@router.get("/me/posts/recent", response_model=List[PostResponse])
+@router.get("/me/posts/recent", response_model=List[PostSummaryResponse])
 def get_my_recent_posts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """현재 사용자가 작성한 최근 4개의 게시글을 반환합니다."""
-    my_posts = db.query(Post).filter(Post.user_id == current_user.id).order_by(Post.created_at.desc()).limit(4).all()
-    return my_posts
+    comment_count_subquery = db.query(
+        Comment.post_id,
+        func.count(Comment.id).label("comment_count")
+    ).group_by(Comment.post_id).subquery()
+
+    my_posts_with_comment_count = (((((db.query(Post)
+                                   .options(selectinload(Post.report), selectinload(Post.images)))
+                                   .filter(Post.user_id == current_user.id))
+                                   .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id))
+                                   .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count")))
+                                   .order_by(Post.created_at.desc()).limit(4).all())
+
+    return [
+        PostSummaryResponse.model_validate(post, update={'comment_count': count})
+        for post, count in my_posts_with_comment_count
+    ]
 
 
-@router.get("/me/bookmarked/recent", response_model=List[PostResponse])
+@router.get("/me/bookmarked/recent", response_model=List[PostSummaryResponse])
 def get_my_recent_bookmarked_posts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """현재 사용자가 북마크한 최근 4개의 게시글을 반환합니다."""
-    bookmarked_posts = db.query(Post).join(User.bookmarked_posts).filter(User.id == current_user.id).order_by(Post.created_at.desc()).limit(4).all()
-    return bookmarked_posts
+    comment_count_subquery = db.query(
+        Comment.post_id,
+        func.count(Comment.id).label("comment_count")
+    ).group_by(Comment.post_id).subquery()
+
+    bookmarked_posts_with_comment_count = (((((db.query(Post)
+                                           .options(selectinload(Post.report), selectinload(Post.images)))
+                                           .join(User.bookmarked_posts).filter(User.id == current_user.id))
+                                           .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id))
+                                           .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count")))
+                                           .order_by(Post.created_at.desc()).limit(4).all())
+
+    return [
+        PostSummaryResponse.model_validate(post, update={'comment_count': count})
+        for post, count in bookmarked_posts_with_comment_count
+    ]
 
 
 @router.post("/{post_id}/bookmark", status_code=status.HTTP_204_NO_CONTENT)

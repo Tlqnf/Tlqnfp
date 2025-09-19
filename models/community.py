@@ -32,6 +32,7 @@ class Post(Base):
     speed = Column(Float)
     distance = Column(Float)
     time = Column(DateTime(timezone=True))
+    map_image_url = Column(String, nullable=True)
 
     author = relationship("User", back_populates="posts")
     report = relationship("Report", back_populates="posts")
