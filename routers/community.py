@@ -1,13 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
 from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 import uuid
 import json # Add this import
 from pydantic import ValidationError # Add this import
+from sqlalchemy import func
+from starlette import status
 
-from models import Post, Comment, Route, User, Image
+from models import Post, Comment, Route, User, Image, Report, Mention, Notification
 from schemas.community import (
-    PostCreate, PostUpdate, PostResponse,
+    PostCreate, PostUpdate, PostResponse, CommentResponse,
     CommentCreate, CommentUpdate, Comment as CommentSchema, AllPostResponse
 )
 from database import get_db
@@ -15,28 +17,26 @@ from utils.auth import get_current_user
 from storage.base import BaseStorage
 from dependencies import get_storage_manager
 
+from utill.comment import get_replies
+from utill.comment import process_mentions_and_notifications
+
 router = APIRouter(prefix="/post", tags=["community"])
 
 
 # ---------------------- 게시글 ----------------------
 @router.get("", response_model=list[PostResponse])
-def get_boards(db: Session = Depends(get_db)):
+def get_boards(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100)
+):
+    skip = (page - 1) * page_size
     posts = db.query(Post).options(
         selectinload(Post.images),
-        selectinload(Post.route).options(selectinload(Route.reports))
-    ).all()
+        selectinload(Post.report).selectinload(Report.route),
+        selectinload(Post.author) # Load the author relationship
+    ).filter(Post.public == True).order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
     return posts
-
-@router.get("/{post_id}", response_model=AllPostResponse)
-def get_board(post_id: int, db: Session = Depends(get_db)):
-    post = db.query(Post).options(
-        selectinload(Post.images),
-        selectinload(Post.comments),
-        selectinload(Post.route).selectinload(Route.reports)
-    ).filter(Post.id == post_id).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-    return post
 
 
 @router.post("", response_model=PostResponse)
@@ -45,9 +45,8 @@ def create_board(
     current_user: User = Depends(get_current_user),
     storage: BaseStorage = Depends(get_storage_manager),
     post_data: str = Form(...),
-    images: List[UploadFile] = File(...)
+    images: List[UploadFile] = File(...),
 ):
-    # Parse post_data as JSON and validate with PostCreate schema
     try:
         post_data_dict = json.loads(post_data)
         post_create_schema = PostCreate(**post_data_dict)
@@ -56,38 +55,35 @@ def create_board(
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
 
-    if post_create_schema.route_id:
-        route = db.query(Route).filter(Route.id == post_create_schema.route_id).first()
-        if not route:
-            raise HTTPException(status_code=404, detail="연결하려는 경로를 찾을 수 없습니다.")
+    if post_create_schema.report_id:
+        report = db.query(Report).filter(Report.id == post_create_schema.report_id).first()
+        if not report:
+            raise HTTPException(status_code=404, detail="연결하려는 리포트를 찾을 수 없습니다.")
 
-    # 1. Create the Post object
     new_post = Post(
         title=post_create_schema.title,
         content=post_create_schema.content,
-        route_id=post_create_schema.route_id,
-        user_id=current_user.id
+        report_id=post_create_schema.report_id,
+        user_id=current_user.id,
+        hash_tag=post_create_schema.hash_tag,
+        public=post_create_schema.public,
+        speed=post_create_schema.speed,
+        distance=post_create_schema.distance,
+        time=post_create_schema.time,
     )
     db.add(new_post)
     db.commit()
     db.refresh(new_post)
 
-    # 2. Save images and create Image records
     if images:
         for image in images:
-            # Generate a unique filename
             file_extension = image.filename.split(".")[-1]
             filename = f"{uuid.uuid4()}.{file_extension}"
-            
-            # Save the file using the storage manager
-            image_url = storage.save(file=image, filename=filename)
-            
-            # Create the Image record
+            image_url = storage.save(file=image, filename=filename, folder="board")
             new_image = Image(url=image_url, post_id=new_post.id)
             db.add(new_image)
-        
         db.commit()
-        db.refresh(new_post) # Refresh again to load the new images relationship
+        db.refresh(new_post)
 
     return new_post
 
@@ -118,8 +114,9 @@ def delete_board(post_id: int, db: Session = Depends(get_db), current_user: User
     return {"message": "글 삭제 성공"}
 
 
-@router.post("/{post_id}/like")
+@router.post("/{post_id}/post-like")
 def recommend_post(post_id: int, db: Session = Depends(get_db)):
+    print(post_id)
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
@@ -127,16 +124,14 @@ def recommend_post(post_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "좋아요 증가", "like_count": post.like_count}
 
-
-@router.post("/{post_id}/read")
-def read_board(post_id: int, db: Session = Depends(get_db)):
+@router.post("/{post_id}/post-unlike")
+def recommend_post(post_id: int, db: Session = Depends(get_db)):
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-    post.read_count += 1
+    post.like_count -= 1
     db.commit()
-    return {"message": "조회수 증가", "read_count": post.read_count}
-
+    return {"message": "좋아요 감소", "like_count": post.like_count}
 
 # ---------------------- 댓글 ----------------------
 @router.post("/{post_id}/comments", response_model=CommentSchema)
@@ -161,15 +156,51 @@ def create_comment(post_id: int, comment: CommentCreate, db: Session = Depends(g
     db.add(new_comment)
     db.commit()
     db.refresh(new_comment)
+
+    process_mentions_and_notifications(
+        db=db,
+        mentions=comment.mentions,
+        new_comment=new_comment,
+        current_user=current_user
+    )
+
+    db.commit()  # Commit all mentions and notifications
+    db.refresh(new_comment)  # Refresh again after adding mentions/notifications
     return new_comment
 
 
-@router.get("/comments/{comment_id}", response_model=CommentSchema)
-def get_comment(comment_id: int, db: Session = Depends(get_db)):
-    comment = db.query(Comment).filter(Comment.id == comment_id).first()
-    if not comment:
+@router.get("/{post_id}/comments", response_model=list[CommentSchema])
+def get_all_comment(post_id: int, db: Session = Depends(get_db)):
+    # 댓글 + 대댓글 개수 계산
+    comments = (
+        db.query(
+            Comment,
+            func.count(Comment.children).label("comment_count")  # children 관계 기준 카운트
+        )
+        .filter(Comment.post_id == post_id, Comment.parent_id == None)  # 최상위 댓글만
+        .outerjoin(Comment.children)
+        .group_by(Comment.id)
+        .all()
+    )
+
+    if not comments:
         raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
-    return comment
+
+    # 반환 형식 맞추기
+    result = []
+    for comment, count in comments:
+        result.append(
+            CommentSchema(
+                id=comment.id,
+                content=comment.content,
+                user_id=comment.user_id,
+                post_id=comment.post_id,
+                like_count=comment.like_count if hasattr(comment, "like_count") else 0,
+                comment_count=count
+            )
+        )
+
+    return result
 
 
 @router.patch("/comments/{comment_id}", response_model=CommentSchema)
@@ -182,6 +213,16 @@ def update_comment(comment_id: int, comment_update: CommentUpdate, db: Session =
     comment.content = comment_update.content
     db.commit()
     db.refresh(comment)
+
+    process_mentions_and_notifications(
+        db=db,
+        mentions=comment.mentions,
+        new_comment=comment,
+        current_user=current_user
+    )
+
+    db.commit()  # Commit all mentions and notifications
+    db.refresh(comment)  # Refresh again after adding mentions/notifications
     return comment
 
 
@@ -195,3 +236,142 @@ def delete_comment(comment_id: int, db: Session = Depends(get_db), current_user:
     db.delete(comment)
     db.commit()
     return {"message": "댓글 삭제 성공"}
+
+
+#대댓글
+
+@router.get("/comments/{comment_id}", response_model=List[CommentResponse])
+def read_replies(comment_id: int, db: Session = Depends(get_db)):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    return get_replies(db, comment_id)
+
+
+
+
+
+
+# -------------------------------
+# Update (댓글 / 대댓글 수정)
+# -------------------------------
+@router.put("/comments/{comment_id}", response_model=CommentResponse)
+def update_comment(comment_id: int, comment_update: CommentUpdate, db: Session = Depends(get_db)):
+    db_comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not db_comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    db_comment.content = comment_update.content
+    db.commit()
+    db.refresh(db_comment)
+    return db_comment
+
+
+# -------------------------------
+# Delete (댓글 / 대댓글 삭제)
+# -------------------------------
+@router.delete("/comments/{comment_id}")
+def delete_comment(comment_id: int, db: Session = Depends(get_db)):
+    db_comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not db_comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    db.delete(db_comment)
+    db.commit()
+    return {"detail": "Comment deleted"}
+
+#댓글 좋아요
+@router.post("/{comment_id}/comment-like")
+def recommend_post(comment_id: int, db: Session = Depends(get_db)):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+    comment.like_count += 1
+    db.commit()
+    return {"message": "좋아요 감소", "like_count": comment.like_count}
+
+#댓글 좋아요 취소
+@router.post("/{comment_id}/comment-unlike")
+def recommend_post(comment_id: int, db: Session = Depends(get_db)):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+    comment.like_count -= 1
+    db.commit()
+    return {"message": "좋아요 감소", "like_count": comment.like_count}
+
+
+@router.get("/me/bookmarked", response_model=List[PostResponse])
+def get_my_bookmarked_posts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100)
+):
+    """현재 사용자가 북마크한 모든 게시글의 목록을 반환합니다."""
+    skip = (page - 1) * page_size
+    bookmarked_posts_query = db.query(Post).join(User.bookmarked_posts).filter(User.id == current_user.id)
+    bookmarked_posts = bookmarked_posts_query.order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
+    return bookmarked_posts
+
+
+@router.get("/me/posts", response_model=List[PostResponse])
+def get_my_posts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100)
+):
+    """현재 사용자가 작성한 모든 게시글의 목록을 반환합니다."""
+    skip = (page - 1) * page_size
+    posts_query = db.query(Post).filter(Post.user_id == current_user.id)
+    my_posts = posts_query.order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
+    return my_posts
+
+
+@router.get("/me/posts/recent", response_model=List[PostResponse])
+def get_my_recent_posts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """현재 사용자가 작성한 최근 4개의 게시글을 반환합니다."""
+    my_posts = db.query(Post).filter(Post.user_id == current_user.id).order_by(Post.created_at.desc()).limit(4).all()
+    return my_posts
+
+
+@router.get("/me/bookmarked/recent", response_model=List[PostResponse])
+def get_my_recent_bookmarked_posts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """현재 사용자가 북마크한 최근 4개의 게시글을 반환합니다."""
+    bookmarked_posts = db.query(Post).join(User.bookmarked_posts).filter(User.id == current_user.id).order_by(Post.created_at.desc()).limit(4).all()
+    return bookmarked_posts
+
+
+@router.post("/{post_id}/bookmark", status_code=status.HTTP_204_NO_CONTENT)
+def bookmark_post(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """특정 게시글을 현재 사용자의 북마크에 추가합니다."""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    if post in current_user.bookmarked_posts:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Post already bookmarked")
+
+    current_user.bookmarked_posts.append(post)
+    db.commit()
+
+@router.delete("/{post_id}/bookmark", status_code=status.HTTP_204_NO_CONTENT)
+def unbookmark_post(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """특정 게시글을 현재 사용자의 북마크에서 제거합니다."""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    if post not in current_user.bookmarked_posts:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Post not bookmarked")
+
+    current_user.bookmarked_posts.remove(post)
+    db.commit()
