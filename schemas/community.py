@@ -76,11 +76,11 @@ class PostUpdate(BaseModel):
 class CommentCreate(BaseModel):
     content: str
     parent_id: Optional[int] = None
-    post_id: Optional[int] = None
     mentions: List[str] = []
 
 class CommentUpdate(BaseModel):
     content: str
+    mentions: List[str] = []
 
 class Comment(BaseModel):
     id: int

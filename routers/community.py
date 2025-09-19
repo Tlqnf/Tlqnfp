@@ -18,6 +18,7 @@ from storage.base import BaseStorage
 from dependencies import get_storage_manager
 
 from utill.comment import get_replies
+from utill.comment import process_mentions_and_notifications
 
 router = APIRouter(prefix="/post", tags=["community"])
 
@@ -113,7 +114,7 @@ def delete_board(post_id: int, db: Session = Depends(get_db), current_user: User
     return {"message": "글 삭제 성공"}
 
 
-@router.post("/{post_id}/like")
+@router.post("/{post_id}/post-like")
 def recommend_post(post_id: int, db: Session = Depends(get_db)):
     print(post_id)
     post = db.query(Post).filter(Post.id == post_id).first()
@@ -123,7 +124,7 @@ def recommend_post(post_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "좋아요 증가", "like_count": post.like_count}
 
-@router.post("/{post_id}/unlike")
+@router.post("/{post_id}/post-unlike")
 def recommend_post(post_id: int, db: Session = Depends(get_db)):
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
@@ -155,6 +156,16 @@ def create_comment(post_id: int, comment: CommentCreate, db: Session = Depends(g
     db.add(new_comment)
     db.commit()
     db.refresh(new_comment)
+
+    process_mentions_and_notifications(
+        db=db,
+        mentions=comment.mentions,
+        new_comment=new_comment,
+        current_user=current_user
+    )
+
+    db.commit()  # Commit all mentions and notifications
+    db.refresh(new_comment)  # Refresh again after adding mentions/notifications
     return new_comment
 
 
@@ -202,6 +213,16 @@ def update_comment(comment_id: int, comment_update: CommentUpdate, db: Session =
     comment.content = comment_update.content
     db.commit()
     db.refresh(comment)
+
+    process_mentions_and_notifications(
+        db=db,
+        mentions=comment.mentions,
+        new_comment=comment,
+        current_user=current_user
+    )
+
+    db.commit()  # Commit all mentions and notifications
+    db.refresh(comment)  # Refresh again after adding mentions/notifications
     return comment
 
 
@@ -228,95 +249,8 @@ def read_replies(comment_id: int, db: Session = Depends(get_db)):
     return get_replies(db, comment_id)
 
 
-# -------------------------------
-# Create (댓글 / 대댓글)
-# -------------------------------
-import firebase_admin
-from firebase_admin import credentials, messaging
 
-# Initialize Firebase Admin SDK (only once)
-# Replace 'path/to/your/serviceAccountKey.json' with the actual path to your Firebase service account key file.
-# It's recommended to store this path in an environment variable.
-try:
-    cred = credentials.Certificate('key/pedal-1e999-firebase-adminsdk-fbsvc-0dba55d5dc.json')
-    firebase_admin.initialize_app(cred)
-except ValueError:
-    # App is already initialized, which can happen in development with hot-reloading
-    pass
 
-def send_push_notification(db: Session, user: User, device_token: str, message: str):
-    try:
-        message_obj = messaging.Message(
-            notification=messaging.Notification(
-                title='새로운 멘션 알림',
-                body=message,
-            ),
-            token=device_token,
-        )
-        response = messaging.send(message_obj)
-        print('Successfully sent message:', response)
-    except messaging.UnregisteredError:
-        print(f"FCM token for user {user.id} is unregistered. Clearing token.")
-        user.fcm_token = None
-        db.add(user)
-        db.commit()
-    except Exception as e:
-        print(f"Error sending message: {e}")
-
-@router.post("/comments", response_model=CommentResponse)
-def create_comment(comment: CommentCreate, user_id: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """
-    댓글 또는 대댓글 작성
-    depth=1 제한: 대댓글의 대댓글은 생성 불가
-    """
-    if comment.parent_id:
-        parent = db.query(Comment).filter(Comment.id == comment.parent_id).first()
-        if not parent:
-            raise HTTPException(status_code=404, detail="Parent comment not found")
-        if parent.parent_id is not None:
-            raise HTTPException(status_code=400, detail="Cannot reply to a reply (depth=1 limit)")
-
-    new_comment = Comment(
-        content=comment.content,
-        user_id=user_id.id,
-        post_id=comment.post_id,
-        parent_id=comment.parent_id
-    )
-    db.add(new_comment)
-    db.commit()
-    db.refresh(new_comment)
-
-    # 멘션 처리 및 알림 생성
-    for mentioned_username in comment.mentions:
-        mentioned_user = db.query(User).filter(User.username == mentioned_username).first()
-        if not mentioned_user:
-            continue  # 존재하지 않는 유저는 무시
-
-        # Mention 기록
-        mention = Mention(comment_id=new_comment.id, user_id=mentioned_user.id)
-        db.add(mention)
-
-        # Notification 생성
-        notification = Notification(
-            user_id=mentioned_user.id,
-            comment_id=new_comment.id,
-            type="mention",
-            message=f"{user_id.username}님이 회원님을 멘션했습니다."
-        )
-        db.add(notification)
-
-        # 푸시 알림 전송 (User 모델에 phone_token 필드가 있다고 가정)
-        if hasattr(mentioned_user, 'fcm_token') and mentioned_user.fcm_token:
-            send_push_notification(
-                db=db,
-                user=mentioned_user,
-                device_token=mentioned_user.fcm_token,
-                message=f"{user_id.username}님이 댓글에서 회원님을 멘션했습니다."
-            )
-
-    db.commit() # Commit all mentions and notifications
-    db.refresh(new_comment) # Refresh again after adding mentions/notifications
-    return new_comment
 
 
 # -------------------------------
@@ -348,7 +282,7 @@ def delete_comment(comment_id: int, db: Session = Depends(get_db)):
     return {"detail": "Comment deleted"}
 
 #댓글 좋아요
-@router.post("/{comment_id}/like")
+@router.post("/{comment_id}/comment-like")
 def recommend_post(comment_id: int, db: Session = Depends(get_db)):
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment:
@@ -358,7 +292,7 @@ def recommend_post(comment_id: int, db: Session = Depends(get_db)):
     return {"message": "좋아요 감소", "like_count": comment.like_count}
 
 #댓글 좋아요 취소
-@router.post("/{comment_id}/unlike")
+@router.post("/{comment_id}/comment-unlike")
 def recommend_post(comment_id: int, db: Session = Depends(get_db)):
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment:
