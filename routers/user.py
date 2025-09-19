@@ -94,8 +94,5 @@ def logout(db: Session = Depends(get_db), current_user: User = Depends(get_curre
 
 @router.get("/me/profile-description-status", response_model=ProfileDescriptionStatus)
 def get_profile_description_status(current_user: User = Depends(get_current_user)):
-    """
-    현재 로그인한 사용자의 프로필 설명(profile_description)이 null인지 여부를 반환합니다.
-    """
     is_null = current_user.profile_description is None
     return ProfileDescriptionStatus(is_null=is_null)

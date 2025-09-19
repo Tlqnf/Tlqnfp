@@ -22,9 +22,9 @@ class User(Base):
     comments = relationship("Comment", back_populates="author")
     reports = relationship("Report", back_populates="author")
     routes = relationship("Route", back_populates="author")
-    bookmarked_routes = relationship(
-        "Route",
-        secondary="bookmarked_routes",
+    bookmarked_posts = relationship(
+        "Post",
+        secondary="bookmarked_posts",
         back_populates="bookmarked_by_users"
     )
     notifications = relationship("Notification", back_populates="user")

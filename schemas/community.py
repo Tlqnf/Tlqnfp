@@ -123,6 +123,17 @@ class CommentResponse(BaseModel):
     parent_id: Optional[int]
     created_at: datetime
     updated_at: Optional[datetime]
+    author: Optional[UserResponse] = None
+
+    @computed_field
+    @property
+    def username(self) -> Optional[str]:
+        return self.author.username if self.author else None
+
+    @computed_field
+    @property
+    def profile_pic(self) -> Optional[str]:
+        return self.author.profile_pic if self.author else None
 
     class Config:
         from_attributes = True

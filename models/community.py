@@ -1,8 +1,17 @@
-from sqlalchemy import Column, Integer, Boolean, String, Text, ForeignKey, DateTime, func, Float, ARRAY
+from sqlalchemy import Column, Integer, Boolean, String, Text, ForeignKey, DateTime, func, Float, ARRAY, Table
 from sqlalchemy.orm import relationship
 from database import Base
 import enum
 from .image import Image
+
+
+# Define the association table for bookmarked posts
+bookmarked_posts = Table(
+    'bookmarked_posts',
+    Base.metadata,
+    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('post_id', Integer, ForeignKey('posts.id'), primary_key=True)
+)
 
 
 class Post(Base):
@@ -29,10 +38,15 @@ class Post(Base):
     comments = relationship(
         "Comment",
         primaryjoin="and_(Post.id == Comment.post_id, Comment.parent_id == None)",
-        back_populates="post", 
+        back_populates="post",
         cascade="all, delete-orphan"
     )
     images = relationship("Image", back_populates="post", cascade="all, delete-orphan")
+    bookmarked_by_users = relationship(
+        "User",
+        secondary=bookmarked_posts,
+        back_populates="bookmarked_posts"
+    )
 
 
 class Comment(Base):
@@ -40,6 +54,7 @@ class Comment(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     content = Column(Text, nullable=False)
+    like_count = Column(Integer, default=0)
     user_id = Column(Integer, ForeignKey("users.id"))
     post_id = Column(Integer, ForeignKey("posts.id"), nullable=True)
     report_id = Column(Integer, ForeignKey("reports.id"), nullable=True)

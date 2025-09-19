@@ -12,23 +12,18 @@ router = APIRouter(
 )
 
 @router.get("/", response_model=List[route_schema.Route])
-def get_routes(db: Session = Depends(get_db)):
-    """저장된 모든 경로의 목록을 JSON 형식으로 반환합니다."""
-    routes = db.query(Route).all()
+def get_routes(db: Session = Depends(get_db), tags: Optional[List[str]] = Query(None)):
+    """저장된 모든 경로의 목록을 JSON 형식으로 반환합니다. 태그를 사용하여 필터링할 수 있습니다."""
+    if tags and len(tags) > 3:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You can query with a maximum of 3 tags.")
+
+    query = db.query(Route)
+    if tags:
+        query = query.filter(Route.tags.contains(tags))
+    routes = query.all()
     return routes
 
-@router.get("/me/bookmarked", response_model=List[route_schema.Route])
-def get_my_bookmarked_routes(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(4, ge=1, le=100)
-):
-    """현재 사용자가 북마크한 모든 경로의 목록을 반환합니다."""
-    skip = (page - 1) * page_size
-    bookmarked_routes_query = db.query(Route).join(User.bookmarked_routes).filter(User.id == current_user.id)
-    bookmarked_routes = bookmarked_routes_query.order_by(Route.created_at.desc()).offset(skip).limit(page_size).all()
-    return bookmarked_routes
+
 
 
 
@@ -52,28 +47,32 @@ def get_route_by_id(route_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Route not found")
     return route
 
-@router.post("/{route_id}/bookmark", status_code=status.HTTP_204_NO_CONTENT)
-def bookmark_route(route_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """특정 경로를 현재 사용자의 북마크에 추가합니다."""
-    route = db.query(Route).filter(Route.id == route_id).first()
-    if not route:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
-    
-    if route in current_user.bookmarked_routes:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Route already bookmarked")
 
-    current_user.bookmarked_routes.append(route)
-    db.commit()
-
-@router.delete("/{route_id}/bookmark", status_code=status.HTTP_204_NO_CONTENT)
-def unbookmark_route(route_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """특정 경로를 현재 사용자의 북마크에서 제거합니다."""
+@router.patch("/{route_id}", response_model=route_schema.Route)
+def update_route(
+    route_id: int,
+    route_update: route_schema.RouteUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """경로의 이름이나 태그를 수정합니다."""
     route = db.query(Route).filter(Route.id == route_id).first()
+
     if not route:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
 
-    if route not in current_user.bookmarked_routes:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Route not bookmarked")
+    if route.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this route")
 
-    current_user.bookmarked_routes.remove(route)
+    if route_update.name is not None:
+        route.name = route_update.name
+    if route_update.tags is not None:
+        if len(route_update.tags) > 3:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You can add a maximum of 3 tags.")
+        route.tags = route_update.tags
+
     db.commit()
+    db.refresh(route)
+    return route
+
+

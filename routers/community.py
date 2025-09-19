@@ -5,6 +5,7 @@ import uuid
 import json # Add this import
 from pydantic import ValidationError # Add this import
 from sqlalchemy import func
+from starlette import status
 
 from models import Post, Comment, Route, User, Image, Report, Mention, Notification
 from schemas.community import (
@@ -26,14 +27,14 @@ router = APIRouter(prefix="/post", tags=["community"])
 def get_boards(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
-    page_size: int = Query(3, ge=1, le=100)
+    page_size: int = Query(10, ge=1, le=100)
 ):
     skip = (page - 1) * page_size
     posts = db.query(Post).options(
         selectinload(Post.images),
         selectinload(Post.report).selectinload(Report.route),
         selectinload(Post.author) # Load the author relationship
-    ).order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
+    ).filter(Post.public == True).order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
     return posts
 
 
@@ -218,62 +219,49 @@ def delete_comment(comment_id: int, db: Session = Depends(get_db), current_user:
 
 #대댓글
 
-def serialize_reply(comment: Comment):
-    return {
-        "id": comment.id,
-        "content": comment.content,
-        "author": comment.author.username,
-        "created_at": comment.created_at,
-        "like_count": comment.like_count,
-        "profile":comment.author.profile_pic
-    }
-
 @router.get("/comments/{comment_id}", response_model=List[CommentResponse])
 def read_replies(comment_id: int, db: Session = Depends(get_db)):
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
 
-    replies = get_replies(db, comment_id)
-
-    # depth=1만 표시
-    return [serialize_reply(r) for r in replies]
+    return get_replies(db, comment_id)
 
 
 # -------------------------------
 # Create (댓글 / 대댓글)
 # -------------------------------
-# import firebase_admin
-# from firebase_admin import credentials, messaging
-#
-# # Initialize Firebase Admin SDK (only once)
-# # Replace 'path/to/your/serviceAccountKey.json' with the actual path to your Firebase service account key file.
-# # It's recommended to store this path in an environment variable.
-# try:
-#     cred = credentials.Certificate('path/to/your/serviceAccountKey.json')
-#     firebase_admin.initialize_app(cred)
-# except ValueError:
-#     # App is already initialized, which can happen in development with hot-reloading
-#     pass
-#
-# def send_push_notification(db: Session, user: User, device_token: str, message: str):
-#     try:
-#         message_obj = messaging.Message(
-#             notification=messaging.Notification(
-#                 title='새로운 멘션 알림',
-#                 body=message,
-#             ),
-#             token=device_token,
-#         )
-#         response = messaging.send(message_obj)
-#         print('Successfully sent message:', response)
-#     except messaging.UnregisteredError:
-#         print(f"FCM token for user {user.id} is unregistered. Clearing token.")
-#         user.fcm_token = None
-#         db.add(user)
-#         db.commit()
-#     except Exception as e:
-#         print(f"Error sending message: {e}")
+import firebase_admin
+from firebase_admin import credentials, messaging
+
+# Initialize Firebase Admin SDK (only once)
+# Replace 'path/to/your/serviceAccountKey.json' with the actual path to your Firebase service account key file.
+# It's recommended to store this path in an environment variable.
+try:
+    cred = credentials.Certificate('key/pedal-1e999-firebase-adminsdk-fbsvc-0dba55d5dc.json')
+    firebase_admin.initialize_app(cred)
+except ValueError:
+    # App is already initialized, which can happen in development with hot-reloading
+    pass
+
+def send_push_notification(db: Session, user: User, device_token: str, message: str):
+    try:
+        message_obj = messaging.Message(
+            notification=messaging.Notification(
+                title='새로운 멘션 알림',
+                body=message,
+            ),
+            token=device_token,
+        )
+        response = messaging.send(message_obj)
+        print('Successfully sent message:', response)
+    except messaging.UnregisteredError:
+        print(f"FCM token for user {user.id} is unregistered. Clearing token.")
+        user.fcm_token = None
+        db.add(user)
+        db.commit()
+    except Exception as e:
+        print(f"Error sending message: {e}")
 
 @router.post("/comments", response_model=CommentResponse)
 def create_comment(comment: CommentCreate, user_id: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -378,3 +366,78 @@ def recommend_post(comment_id: int, db: Session = Depends(get_db)):
     comment.like_count -= 1
     db.commit()
     return {"message": "좋아요 감소", "like_count": comment.like_count}
+
+
+@router.get("/me/bookmarked", response_model=List[PostResponse])
+def get_my_bookmarked_posts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100)
+):
+    """현재 사용자가 북마크한 모든 게시글의 목록을 반환합니다."""
+    skip = (page - 1) * page_size
+    bookmarked_posts_query = db.query(Post).join(User.bookmarked_posts).filter(User.id == current_user.id)
+    bookmarked_posts = bookmarked_posts_query.order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
+    return bookmarked_posts
+
+
+@router.get("/me/posts", response_model=List[PostResponse])
+def get_my_posts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100)
+):
+    """현재 사용자가 작성한 모든 게시글의 목록을 반환합니다."""
+    skip = (page - 1) * page_size
+    posts_query = db.query(Post).filter(Post.user_id == current_user.id)
+    my_posts = posts_query.order_by(Post.created_at.desc()).offset(skip).limit(page_size).all()
+    return my_posts
+
+
+@router.get("/me/posts/recent", response_model=List[PostResponse])
+def get_my_recent_posts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """현재 사용자가 작성한 최근 4개의 게시글을 반환합니다."""
+    my_posts = db.query(Post).filter(Post.user_id == current_user.id).order_by(Post.created_at.desc()).limit(4).all()
+    return my_posts
+
+
+@router.get("/me/bookmarked/recent", response_model=List[PostResponse])
+def get_my_recent_bookmarked_posts(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """현재 사용자가 북마크한 최근 4개의 게시글을 반환합니다."""
+    bookmarked_posts = db.query(Post).join(User.bookmarked_posts).filter(User.id == current_user.id).order_by(Post.created_at.desc()).limit(4).all()
+    return bookmarked_posts
+
+
+@router.post("/{post_id}/bookmark", status_code=status.HTTP_204_NO_CONTENT)
+def bookmark_post(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """특정 게시글을 현재 사용자의 북마크에 추가합니다."""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    
+    if post in current_user.bookmarked_posts:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Post already bookmarked")
+
+    current_user.bookmarked_posts.append(post)
+    db.commit()
+
+@router.delete("/{post_id}/bookmark", status_code=status.HTTP_204_NO_CONTENT)
+def unbookmark_post(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """특정 게시글을 현재 사용자의 북마크에서 제거합니다."""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    if post not in current_user.bookmarked_posts:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Post not bookmarked")
+
+    current_user.bookmarked_posts.remove(post)
+    db.commit()

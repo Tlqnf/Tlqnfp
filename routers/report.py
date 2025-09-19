@@ -119,6 +119,14 @@ def get_weekly_report_summary(db: Session = Depends(get_db), current_user: User 
         Report.created_at <= end_date
     ).all()
 
+    if not reports:
+        return WeeklyReportSummary(
+            routes_taken_count=0,
+            total_activity_time_hours=0,
+            total_activity_time_remaining_minutes=0,
+            total_activity_distance_km=0
+        )
+
     routes_taken_count = len(reports)
     total_activity_time_total_minutes = sum(report.health_time for report in reports) / 60 # Convert seconds to minutes (float)
     total_activity_time_hours = int(total_activity_time_total_minutes // 60)
@@ -151,3 +159,6 @@ def get_report_by_id(report_id: int, db: Session = Depends(get_db), current_user
         raise HTTPException(status_code=403, detail="리포트를 볼 권한이 없습니다.")
 
     return report
+
+
+

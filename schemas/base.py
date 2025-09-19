@@ -22,6 +22,7 @@ class Route(RouteBase):
     points_json: Optional[List[Dict[str, Any]]] = []
     start_point: Optional[Dict[str, Any]] = None
     end_point: Optional[Dict[str, Any]] = None
+    tags: Optional[List[str]] = []
 
     class Config:
         from_attributes = True
