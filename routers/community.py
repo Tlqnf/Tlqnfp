@@ -58,8 +58,8 @@ def create_board(
     current_user: User = Depends(get_current_user),
     storage: BaseStorage = Depends(get_storage_manager),
     post_data: str = Form(...),
-    images: List[UploadFile] = File(...),
-    map_image: Optional[UploadFile] = File(None),
+    images: Optional[List[UploadFile]] = File(None),
+    map_image: UploadFile = File(...),
 ):
     try:
         post_data_dict = json.loads(post_data)
