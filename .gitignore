@@ -1,2 +1,5 @@
 key
 .env
+entrypoint.sh
+deploy.env
+app_entrypoint.sh
