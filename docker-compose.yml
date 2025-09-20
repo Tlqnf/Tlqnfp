@@ -1,11 +1,56 @@
 services:
-  db:
-    image: postgres:latest
-    container_name: fitness_db
-    restart: always
+  app:
+    # Use the image from the container registry, with a fallback for local use
+    image: ${DOCKER_IMAGE_NAME:kimsee/backend}:${DOCKER_IMAGE_TAG:-latest}
+    ports:
+      - "8000:8000"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      # Database connection for the app
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_HOST: db # Service name of the PostgreSQL container
+      POSTGRES_PORT: 5432 # Internal port of PostgreSQL
+      POSTGRES_DB: ${POSTGRES_DB:-fitness_db}
+      
+      # Storage configuration
+      STORAGE_TYPE: ${STORAGE_TYPE:-local} # Default to local storage
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+
+      # JWT Secret Key
+      SECRET_KEY: ${SECRET_KEY:-super-secret-key}
+
+    depends_on:
+      - db
+    # The volume for live-reloading is removed for deployment
+    command: ["gunicorn", "main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
+
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432" # Expose DB port to host for external tools (optional)
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_DB: ${POSTGRES_DB:-fitness_db}
-    ports:
-      - "${POSTGRES_PORT:-5123}:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data # Persistent data storage
+
+  # Service to run Alembic migrations
+  alembic:
+    # Use the same application image
+    image: ${DOCKER_IMAGE_NAME:kimsee/backend}:${DOCKER_IMAGE_TAG:-latest}
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-fitness_db}
+    depends_on:
+      - db
+
+volumes:
+  db_data:
