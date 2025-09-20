@@ -91,6 +91,7 @@ async def record_route(websocket: WebSocket, token: str = Query(...)):
             return
 
     await websocket.accept()
+    await websocket.send_json({"route_id": new_route_id})
 
     session = TrackingSession()
     recent_raw_points = deque(maxlen=SLIDING_WINDOW_SIZE)

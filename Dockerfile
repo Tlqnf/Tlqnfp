@@ -18,6 +18,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application's code into the container
 COPY . .
 
+# Copy the entrypoint script
+COPY app_entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/app_entrypoint.sh
+
+ENTRYPOINT ["app_entrypoint.sh"]
+
 # Command to run the application using uvicorn
 # The host 0.0.0.0 makes the server accessible from outside the container
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
