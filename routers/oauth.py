@@ -6,7 +6,7 @@ import os
 import httpx
 from urllib.parse import urlencode
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 

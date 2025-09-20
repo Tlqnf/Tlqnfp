@@ -28,3 +28,4 @@ class Report(Base):
 
     author = relationship("User", back_populates="reports")
     comments = relationship("Comment", back_populates="report", cascade="all, delete-orphan")
+    posts = relationship("Post", back_populates="report", cascade="all, delete-orphan")
