@@ -29,6 +29,8 @@ if [ ! -f /data/valhalla.json ]; then
   echo ">>> Build complete. Cleaning up PBF file to save space on EFS..."
   rm /data/osm.pbf
 
+  echo ">>> Archiving Valhalla tiles into valhalla_tiles.tar..."
+  tar -cf /data/valhalla_tiles.tar -C /data tiles
 else
   echo ">>> Found existing Valhalla tiles in /data. Skipping build process."
 fi
