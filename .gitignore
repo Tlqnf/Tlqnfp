@@ -3,3 +3,5 @@ key
 entrypoint.sh
 deploy.env
 app_entrypoint.sh
+
+__pycache__/

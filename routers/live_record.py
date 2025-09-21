@@ -9,6 +9,7 @@ from models import Route, Report, User
 from utill.tracking_calculator import TrackingSession
 from dotenv import load_dotenv
 from utils.auth import get_user_from_token
+import json
 
 load_dotenv()
 
@@ -72,32 +73,84 @@ async def correct_path_with_valhalla(points: list[GPSData]):
             print(f"Valhalla API request failed: {e}")
             return []
 
+def save_session_data(db: Session, session: TrackingSession, route_id: int, report_id: int):
+    """Helper function to update route and report data."""
+    route_to_update = db.query(Route).filter(Route.id == route_id).first()
+    report_to_update = db.query(Report).filter(Report.id == report_id).first()
+
+    if not route_to_update or not report_to_update:
+        print(f"Error: Route {route_id} or Report {report_id} not found for saving.")
+        return
+
+    if session.corrected_points:
+        # Update Route
+        final_points = [
+            {k: v for k, v in p.items() if k != 'time'} for p in session.corrected_points
+        ]
+        route_to_update.points_json = final_points
+        route_to_update.start_point = {k: v for k, v in session.corrected_points[0].items() if k != 'time'}
+        route_to_update.end_point = {k: v for k, v in session.corrected_points[-1].items() if k != 'time'}
+        db.add(route_to_update)
+
+        # Report is intentionally left empty as per user request.
+        
+        db.commit()
+        print(f"Session for route {route_id} ended. Route updated, Report left empty.")
+    else:
+        # If no data, delete the created placeholder records
+        db.delete(route_to_update)
+        db.delete(report_to_update)
+        db.commit()
+        print(f"Session for route {route_id} ended. No data, placeholder records deleted.")
+
 @router.websocket("/ws/record-route")
 async def record_route(websocket: WebSocket, token: str = Query(...)):
-    # 1. Authenticate user and create initial route in one session
+    db = SessionLocal()
+    user = None
     new_route_id = None
-    with SessionLocal() as db:
-        try:
-            user = await get_user_from_token(token=token, db=db)
-            # 2. Initialize a new route with user_id
-            new_route = Route(points_json=[], user_id=user.id)
-            db.add(new_route)
-            db.commit()
-            db.refresh(new_route)
-            new_route_id = new_route.id
-        except HTTPException as e: # Catch the HTTPException
-            print(f"Authentication failed: Status Code {e.status_code}, Detail: {e.detail}")
-            await websocket.close(code=1008) # Policy violation
-            return
+    new_report_id = None
+
+    try:
+        # 1. Authenticate user
+        user = await get_user_from_token(token=token, db=db)
+
+        # 2. Create placeholder Route and Report
+        new_route = Route(points_json=[], user_id=user.id)
+        db.add(new_route)
+        db.commit()
+        db.refresh(new_route)
+        new_route_id = new_route.id
+
+        new_report = Report(route_id=new_route_id, user_id=user.id)
+        db.add(new_report)
+        db.commit()
+        db.refresh(new_report)
+        new_report_id = new_report.id
+
+    except HTTPException as e:
+        print(f"Authentication failed: Status Code {e.status_code}, Detail: {e.detail}")
+        await websocket.close(code=1008)
+        db.close()
+        return
+    except Exception as e:
+        print(f"Error during initial setup: {e}")
+        await websocket.close(code=1011)
+        db.close()
+        return
 
     await websocket.accept()
-    await websocket.send_json({"route_id": new_route_id})
+    # 3. Send the new IDs to the client immediately
+    await websocket.send_json({
+        "status": "session_started",
+        "route_id": new_route_id,
+        "report_id": new_report_id
+    })
 
     session = TrackingSession()
     recent_raw_points = deque(maxlen=SLIDING_WINDOW_SIZE)
-
+    
     try:
-        # 3. Loop to receive points
+        # 4. Loop to receive GPS data
         while True:
             data = await websocket.receive_json()
             gps_point = GPSData(**data)
@@ -107,49 +160,23 @@ async def record_route(websocket: WebSocket, token: str = Query(...)):
                 await websocket.send_json({"status": "Gathering initial points..."})
                 continue
 
-            # 4. Correct path and update session
             corrected_trace = await correct_path_with_valhalla(list(recent_raw_points))
             if corrected_trace:
                 latest_corrected_point = corrected_trace[-1]
                 session.add_corrected_point(latest_corrected_point)
 
-                # 5. Send live stats to client
                 live_stats = session.get_live_stats()
                 response_data = {**live_stats, "corrected_coordinate": latest_corrected_point}
                 await websocket.send_json(response_data)
 
     except WebSocketDisconnect:
-        # 6. Save final data on disconnect in a new session
-        with SessionLocal() as db:
-            if session.corrected_points:
-                # Omit 'time' from the points to avoid JSON serialization error
-                final_points = [
-                    {k: v for k, v in p.items() if k != 'time'} for p in session.corrected_points
-                ]
-                route_to_update = db.query(Route).filter(Route.id == new_route_id).first()
-                if route_to_update:
-                    route_to_update.points_json = final_points
-                    start_point_data = {k: v for k, v in session.corrected_points[0].items() if k != 'time'}
-                    end_point_data = {k: v for k, v in session.corrected_points[-1].items() if k != 'time'}
-                    route_to_update.start_point = start_point_data
-                    route_to_update.end_point = end_point_data
-                    db.add(route_to_update)
-
-                # Save final report
-                final_report_data = session.get_final_report_data()
-                if final_report_data:
-                    new_report = Report(**final_report_data, route_id=new_route_id, user_id=user.id)
-                    db.add(new_report)
-                
-                db.commit()
-                print(f"Session for route {new_route_id} ended. Route and Report saved.")
-            else:
-                # If no points were ever corrected, delete the empty route
-                route_to_delete = db.query(Route).filter(Route.id == new_route_id).first()
-                if route_to_delete:
-                    db.delete(route_to_delete)
-                    db.commit()
-                print(f"Session for route {new_route_id} ended. No data, route deleted.")
+        # 5. On disconnect, save the final data to the existing records
+        print(f"Client disconnected for route {new_route_id}. Saving data.")
+        save_session_data(db, session, new_route_id, new_report_id)
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred in WebSocket for route {new_route_id}: {e}")
+
+    finally:
+        db.close()
+        print(f"WebSocket connection closed for route {new_route_id}.")

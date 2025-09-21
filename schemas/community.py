@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator, computed_field # Add computed_field, Field
+from pydantic import BaseModel, Field, field_validator, computed_field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -114,6 +114,95 @@ class PostUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
 
+
+class PostCreateResponse(BaseModel):
+    id: int
+    title: str
+    content: str
+    user_id: Optional[int] = None
+    report_id: Optional[int] = None
+    created_at: datetime
+    images: List[Image] = []
+    hash_tag: List[str]
+    public: bool
+    map_image_url: Optional[str] = None
+    report: Optional[ReportWithRouteResponse] = Field(None, exclude=True)
+
+    @computed_field
+    @property
+    def speed(self) -> Optional[float]:
+        if self.report:
+            return self.report.average_speed
+        return None
+
+    @computed_field
+    @property
+    def distance(self) -> Optional[int]:
+        if self.report:
+            return self.report.distance
+        return None
+
+    @computed_field
+    @property
+    def time(self) -> Optional[str]:
+        if self.report and self.report.health_time is not None:
+            total_seconds = self.report.health_time
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            seconds = total_seconds % 60
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        return None
+
+    class Config:
+        from_attributes = True
+        json_encoders = {datetime: convert_datetime_to_korea_time}
+
+
+class PostSearchResponse(BaseModel):
+    id: int
+    title: str
+    content: str
+    like_count: int
+    read_count: int
+    comment_count: int = 0
+    user_id: Optional[int] = None
+    report_id: Optional[int] = None
+    created_at: datetime
+    images: List[Image] = []
+    hash_tag: List[str]
+    public: bool
+    map_image_url: Optional[str] = None
+    report: Optional[ReportWithRouteResponse] = Field(None, exclude=True)
+
+    @computed_field
+    @property
+    def speed(self) -> Optional[float]:
+        if self.report:
+            return self.report.average_speed
+        return None
+
+    @computed_field
+    @property
+    def distance(self) -> Optional[int]:
+        if self.report:
+            return self.report.distance
+        return None
+
+    @computed_field
+    @property
+    def time(self) -> Optional[str]:
+        if self.report and self.report.health_time is not None:
+            total_seconds = self.report.health_time
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            seconds = total_seconds % 60
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        return None
+
+    class Config:
+        from_attributes = True
+        json_encoders = {datetime: convert_datetime_to_korea_time}
+
 # ---------- Comment (New Recursive Structure) ----------
 
 class CommentCreate(BaseModel):
@@ -162,11 +251,12 @@ class CommentResponse(BaseModel):
     id: int
     user_id: int
     content: str
+    like_count: int = 0
     post_id: Optional[int]
     parent_id: Optional[int]
     created_at: datetime
     updated_at: Optional[datetime]
-    author: Optional[UserResponse] = None
+    author: Optional[UserResponse] = Field(None, exclude=True)
 
     @computed_field
     @property

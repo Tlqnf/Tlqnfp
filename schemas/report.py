@@ -92,3 +92,19 @@ class WeeklyReportSummary(BaseModel):
     total_activity_time_hours: int
     total_activity_time_remaining_minutes: int
     total_activity_distance_km: float
+
+
+class ReportUpdate(BaseModel):
+    health_time: Optional[int] = None
+    half_time: Optional[int] = None
+    distance: Optional[int] = None
+    kcal: Optional[int] = None
+    average_speed: Optional[float] = None
+    highest_speed: Optional[float] = None
+    average_face: Optional[float] = None
+    highest_face: Optional[float] = None
+    cumulative_high: Optional[int] = None
+    highest_high: Optional[int] = None
+    lowest_high: Optional[int] = None
+    increase_slope: Optional[float] = None
+    decrease_slope: Optional[float] = None

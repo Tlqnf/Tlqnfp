@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, selectinload, aliased
 from typing import List, Optional
 import uuid
 import json # Add this import
@@ -11,7 +11,7 @@ from models import Post, Comment, Route, User, Image, Report, Mention, Notificat
 from schemas.community import (
     PostCreate, PostUpdate, PostResponse, CommentResponse,
     CommentCreate, CommentUpdate, Comment as CommentSchema, AllPostResponse,
-    PostSummaryResponse # Add PostSummaryResponse
+    PostSummaryResponse, PostCreateResponse, PostSearchResponse # Add PostSummaryResponse
 )
 from database import get_db
 from utils.auth import get_current_user
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/post", tags=["community"])
 
 
 # ---------------------- 게시글 ----------------------
-@router.get("", response_model=list[PostResponse])
+@router.get("", response_model=list[PostSearchResponse])
 def get_boards(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
@@ -38,21 +38,25 @@ def get_boards(
         func.count(Comment.id).label("comment_count")
     ).group_by(Comment.post_id).subquery()
 
-    posts_with_comment_count = (db.query(Post).options(
-        selectinload(Post.images),
-        selectinload(Post.report).selectinload(Report.route),
-        selectinload(Post.author)
-    ).outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
-                                .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count"))
+    posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
+                                .options(
+                                    selectinload(Post.images),
+                                    selectinload(Post.report).selectinload(Report.route),
+                                    selectinload(Post.author)
+                                )
+                                .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
                                 .filter(Post.public == True).order_by(Post.created_at.desc()).offset(skip).limit(page_size).all())
 
-    return [
-        PostResponse.model_validate(post, update={'comment_count': count})
-        for post, count in posts_with_comment_count
-    ]
+    response = []
+    for post, count in posts_with_comment_count:
+        model = PostSearchResponse.model_validate(post)
+        model.comment_count = count
+        response.append(model)
+
+    return response
 
 
-@router.post("", response_model=PostResponse)
+@router.post("", response_model=PostCreateResponse)
 def create_board(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -109,6 +113,36 @@ def create_board(
         db.refresh(new_post)
 
     return new_post
+
+
+@router.get("/{post_id}", response_model=PostResponse)
+def get_board(
+    post_id: int,
+    db: Session = Depends(get_db)
+):
+    """특정 ID의 게시글 상세 정보를 조회합니다."""
+    comment_count_subquery = db.query(
+        Comment.post_id,
+        func.count(Comment.id).label("comment_count")
+    ).group_by(Comment.post_id).subquery()
+
+    result = (
+        db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
+        .options(
+            selectinload(Post.images),
+            selectinload(Post.report).selectinload(Report.route),
+            selectinload(Post.author)
+        )
+        .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
+        .filter(Post.id == post_id)
+        .first()
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+
+    post, count = result
+    return PostResponse.model_validate(post, update={'comment_count': count})
 
 
 @router.patch("/{post_id}", response_model=PostResponse)
@@ -208,24 +242,25 @@ def create_comment(post_id: int, comment: CommentCreate, db: Session = Depends(g
 
 @router.get("/{post_id}/comments", response_model=list[CommentSchema])
 def get_all_comment(post_id: int, db: Session = Depends(get_db)):
-    # 댓글 + 대댓글 개수 계산
-    comments = (
+    ChildComment = aliased(Comment)
+
+    comments_with_count = (
         db.query(
             Comment,
-            func.count(Comment.children).label("comment_count")  # children 관계 기준 카운트
+            func.count(ChildComment.id).label("comment_count")
         )
-        .filter(Comment.post_id == post_id, Comment.parent_id == None)  # 최상위 댓글만
-        .outerjoin(Comment.children)
+        .outerjoin(ChildComment, ChildComment.parent_id == Comment.id)
+        .filter(Comment.post_id == post_id, Comment.parent_id.is_(None))
         .group_by(Comment.id)
         .all()
     )
 
-    if not comments:
+    if not comments_with_count:
         raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
 
-    # 반환 형식 맞추기
     result = []
-    for comment, count in comments:
+    for comment, count in comments_with_count:
+        # Manually construct the CommentSchema to ensure correct field mapping
         result.append(
             CommentSchema(
                 id=comment.id,
@@ -326,7 +361,7 @@ def recommend_post(comment_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
     comment.like_count += 1
     db.commit()
-    return {"message": "좋아요 감소", "like_count": comment.like_count}
+    return {"message": "좋아요 증가", "like_count": comment.like_count}
 
 #댓글 좋아요 취소
 @router.post("/{comment_id}/comment-unlike")
@@ -339,7 +374,7 @@ def recommend_post(comment_id: int, db: Session = Depends(get_db)):
     return {"message": "좋아요 감소", "like_count": comment.like_count}
 
 
-@router.get("/me/bookmarked", response_model=List[PostSummaryResponse])
+@router.get("/me/bookmarked", response_model=List[PostSearchResponse])
 def get_my_bookmarked_posts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -354,20 +389,22 @@ def get_my_bookmarked_posts(
         func.count(Comment.id).label("comment_count")
     ).group_by(Comment.post_id).subquery()
 
-    bookmarked_posts_with_comment_count = (((((db.query(Post)
-                                           .options(selectinload(Post.report), selectinload(Post.images)))
-                                           .join(User.bookmarked_posts).filter(User.id == current_user.id))
-                                           .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id))
-                                           .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count")))
+    bookmarked_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
+                                           .options(selectinload(Post.report), selectinload(Post.images))
+                                           .join(User.bookmarked_posts).filter(User.id == current_user.id)
+                                           .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
                                            .order_by(Post.created_at.desc()).offset(skip).limit(page_size).all())
 
-    return [
-        PostSummaryResponse.model_validate(post, update={'comment_count': count})
-        for post, count in bookmarked_posts_with_comment_count
-    ]
+    response = []
+    for post, count in bookmarked_posts_with_comment_count:
+        model = PostSearchResponse.model_validate(post)
+        model.comment_count = count
+        response.append(model)
+
+    return response
 
 
-@router.get("/me/posts", response_model=List[PostSummaryResponse])
+@router.get("/me/posts", response_model=List[PostSearchResponse])
 def get_my_posts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -382,20 +419,22 @@ def get_my_posts(
         func.count(Comment.id).label("comment_count")
     ).group_by(Comment.post_id).subquery()
 
-    my_posts_with_comment_count = (((((db.query(Post)
-                                   .options(selectinload(Post.report), selectinload(Post.images)))
-                                   .filter(Post.user_id == current_user.id))
-                                   .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id))
-                                   .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count")))
+    my_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
+                                   .options(selectinload(Post.report), selectinload(Post.images))
+                                   .filter(Post.user_id == current_user.id)
+                                   .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
                                    .order_by(Post.created_at.desc()).offset(skip).limit(page_size).all())
 
-    return [
-        PostSummaryResponse.model_validate(post, update={'comment_count': count})
-        for post, count in my_posts_with_comment_count
-    ]
+    response = []
+    for post, count in my_posts_with_comment_count:
+        model = PostSearchResponse.model_validate(post)
+        model.comment_count = count
+        response.append(model)
+
+    return response
 
 
-@router.get("/me/posts/recent", response_model=List[PostSummaryResponse])
+@router.get("/me/posts/recent", response_model=List[PostSearchResponse])
 def get_my_recent_posts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -406,20 +445,22 @@ def get_my_recent_posts(
         func.count(Comment.id).label("comment_count")
     ).group_by(Comment.post_id).subquery()
 
-    my_posts_with_comment_count = (((((db.query(Post)
-                                   .options(selectinload(Post.report), selectinload(Post.images)))
-                                   .filter(Post.user_id == current_user.id))
-                                   .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id))
-                                   .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count")))
+    my_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
+                                   .options(selectinload(Post.report), selectinload(Post.images))
+                                   .filter(Post.user_id == current_user.id)
+                                   .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
                                    .order_by(Post.created_at.desc()).limit(4).all())
 
-    return [
-        PostSummaryResponse.model_validate(post, update={'comment_count': count})
-        for post, count in my_posts_with_comment_count
-    ]
+    response = []
+    for post, count in my_posts_with_comment_count:
+        model = PostSearchResponse.model_validate(post)
+        model.comment_count = count
+        response.append(model)
+
+    return response
 
 
-@router.get("/me/bookmarked/recent", response_model=List[PostSummaryResponse])
+@router.get("/me/bookmarked/recent", response_model=List[PostSearchResponse])
 def get_my_recent_bookmarked_posts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -430,17 +471,19 @@ def get_my_recent_bookmarked_posts(
         func.count(Comment.id).label("comment_count")
     ).group_by(Comment.post_id).subquery()
 
-    bookmarked_posts_with_comment_count = (((((db.query(Post)
-                                           .options(selectinload(Post.report), selectinload(Post.images)))
-                                           .join(User.bookmarked_posts).filter(User.id == current_user.id))
-                                           .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id))
-                                           .add_columns(func.coalesce(comment_count_subquery.c.comment_count, 0).label("comment_count")))
+    bookmarked_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
+                                           .options(selectinload(Post.report), selectinload(Post.images))
+                                           .join(User.bookmarked_posts).filter(User.id == current_user.id)
+                                           .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
                                            .order_by(Post.created_at.desc()).limit(4).all())
 
-    return [
-        PostSummaryResponse.model_validate(post, update={'comment_count': count})
-        for post, count in bookmarked_posts_with_comment_count
-    ]
+    response = []
+    for post, count in bookmarked_posts_with_comment_count:
+        model = PostSearchResponse.model_validate(post)
+        model.comment_count = count
+        response.append(model)
+
+    return response
 
 
 @router.post("/{post_id}/bookmark", status_code=status.HTTP_204_NO_CONTENT)
