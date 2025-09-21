@@ -2,8 +2,8 @@
 set -e
 
 # Check if tiles are already built (the file will exist on the mounted EFS volume)
-if [ ! -f /data/valhalla.json ]; then
-  echo ">>> Valhalla tiles not found in /data. Starting initial build process..."
+if [ ! -f /data/valhalla.json ] || [ ! -f /data/valhalla_tiles.tar ]; then
+  echo ">>> Valhalla config or tiles not found in /data. Starting initial build process..."
 
   # Check if the S3_PBF_PATH environment variable is provided
   if [ -z "$S3_PBF_PATH" ]; then

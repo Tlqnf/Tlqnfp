@@ -4,6 +4,9 @@ FROM python:3.10-slim
 # Set the working directory in the container
 WORKDIR /app
 
+# Create the directory for the key file
+RUN mkdir -p key
+
 # Install system dependencies that might be needed by Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
