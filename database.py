@@ -13,16 +13,12 @@ def set_timezone(dbapi_connection, connection_record):
     cursor.execute("SET TIME ZONE 'Asia/Seoul'")
     cursor.close()
 
-# PostgreSQL 연결 설정
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-DB_NAME = os.getenv("DB_NAME")
-
-# 환경 변수가 모두 설정되었는지 확인
-if not all([DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME]):
-    raise ValueError("Database configuration is incomplete. Check DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME environment variables.")
+# PostgreSQL 연결 예시
+DB_USER = os.getenv("POSTGRES_USER", "postgres")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
+DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
+DB_PORT = os.getenv("POSTGRES_PORT", "5123")
+DB_NAME = os.getenv("POSTGRES_DB", "fitness_db")
 
 DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
