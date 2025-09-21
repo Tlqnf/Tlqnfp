@@ -7,7 +7,6 @@ on:
 env:
   ECR_REGISTRY: ${{secrets.AWS_ECR}}
   APP_IMAGE_NAME: nuclpedal-app
-  VALHALLA_IMAGE_NAME: nuclpedal-valhalla
 
 jobs:
   build-and-push-to-ecr:
@@ -42,13 +41,13 @@ jobs:
             ${{ env.ECR_REGISTRY }}/${{ env.APP_IMAGE_NAME }}:latest
           platforms: linux/amd64
 
-      - name: Build, tag, and push nuclpedal-valhalla image to Amazon ECR
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./valhalla.Dockerfile
-          push: true
-          tags: |
-            ${{ env.ECR_REGISTRY }}/${{ env.VALHALLA_IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.ECR_REGISTRY }}/${{ env.VALHALLA_IMAGE_NAME }}:latest
-          platforms: linux/amd64
+#      - name: Build, tag, and push nuclpedal-valhalla image to Amazon ECR
+#        uses: docker/build-push-action@v4
+#        with:
+#          context: .
+#          file: ./valhalla.Dockerfile
+#          push: true
+#          tags: |
+#            ${{ env.ECR_REGISTRY }}/${{ env.VALHALLA_IMAGE_NAME }}:${{ github.sha }}
+#            ${{ env.ECR_REGISTRY }}/${{ env.VALHALLA_IMAGE_NAME }}:latest
+#          platforms: linux/amd64
