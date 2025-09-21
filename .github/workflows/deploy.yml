@@ -1,0 +1,54 @@
+name: Build and Push to ECR
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  ECR_REGISTRY: ${{secrets.AWS_ECR}}
+  APP_IMAGE_NAME: nuclpedal-app
+  VALHALLA_IMAGE_NAME: nuclpedal-valhalla
+
+jobs:
+  build-and-push-to-ecr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-2
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push nuclpedal-app image to Amazon ECR
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/${{ env.APP_IMAGE_NAME }}:latest
+          platforms: linux/amd64
+
+      - name: Build, tag, and push nuclpedal-valhalla image to Amazon ECR
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./valhalla.Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.VALHALLA_IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/${{ env.VALHALLA_IMAGE_NAME }}:latest
+          platforms: linux/amd64

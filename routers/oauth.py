@@ -15,17 +15,19 @@ load_dotenv() # Load environment variables from .env file
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
 # Load environment variables
+APP_BASE_URL = os.getenv("APP_BASE_URL")
+
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+GOOGLE_REDIRECT_URI = f"{APP_BASE_URL}/oauth/google/callback" if APP_BASE_URL else None
 
 NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
-NAVER_REDIRECT_URI = os.getenv("NAVER_REDIRECT_URI")
+NAVER_REDIRECT_URI = f"{APP_BASE_URL}/oauth/naver/callback" if APP_BASE_URL else None
 
 KAKAO_CLIENT_ID = os.getenv("KAKAO_CLIENT_ID")
 KAKAO_CLIENT_SECRET = os.getenv("KAKAO_CLIENT_SECRET")
-KAKAO_REDIRECT_URI = os.getenv("KAKAO_REDIRECT_URI")
+KAKAO_REDIRECT_URI = f"{APP_BASE_URL}/oauth/kakao/callback" if APP_BASE_URL else None
 
 # JWT Settings
 SECRET_KEY = os.getenv("SECRET_KEY", "super-secret-key") # Change this in production!
