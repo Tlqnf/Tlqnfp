@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List
 
 from models.user import User
@@ -54,16 +54,17 @@ def get_replies(db: Session, parent_comment_id: int) -> List[CommentResponse]:
     """
     Retrieves replies for a given parent comment ID.
     """
-    replies = db.query(Comment).filter(Comment.parent_id == parent_comment_id).all()
+    replies = db.query(Comment).options(selectinload(Comment.author)).filter(Comment.parent_id == parent_comment_id).all()
     return [
         CommentResponse(
             id=reply.id,
+            user_id=reply.user_id, 
             content=reply.content,
+            like_count=reply.like_count,
             post_id=reply.post_id,
             parent_id=reply.parent_id,
             created_at=reply.created_at,
             updated_at=reply.updated_at,
-            like_count=reply.like_count,
             author=reply.author,
             # Add other fields as necessary from the Comment model
         )
