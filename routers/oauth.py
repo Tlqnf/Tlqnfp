@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from pydantic import BaseModel # Added
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
@@ -9,6 +10,8 @@ from jose import jwt
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 from dotenv import load_dotenv
+from google.oauth2 import id_token # Added
+from google.auth.transport import requests as google_requests # Added
 
 load_dotenv() # Load environment variables from .env file
 
@@ -17,6 +20,7 @@ router = APIRouter(prefix="/oauth", tags=["oauth"])
 # Load environment variables
 APP_BASE_URL = os.getenv("APP_BASE_URL")
 
+GOOGLE_CLIENT_ANDROID_ID = os.getenv("GOOGLE_CLIENT_ANDROID_ID")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = f"{APP_BASE_URL}/oauth/google/callback" if APP_BASE_URL else None
@@ -229,3 +233,35 @@ async def kakao_callback(code: str, db: Session = Depends(get_db)):
 
         access_token = create_access_token(data={"sub": str(user.id)})
         return {"access_token": access_token, "token_type": "bearer"}
+
+class Token(BaseModel):
+    idToken: str
+
+@router.post("/google/token")
+async def google_token_signin(token: Token, db: Session = Depends(get_db)):
+    if not GOOGLE_CLIENT_ANDROID_ID:
+        raise HTTPException(status_code=500, detail="Google OAuth configuration missing.")
+
+    try:
+        idinfo = id_token.verify_oauth2_token(token.idToken, google_requests.Request(), GOOGLE_CLIENT_ANDROID_ID)
+
+        userid = idinfo['sub']
+        user = db.query(User).filter(User.google_id == userid).first()
+
+        if not user:
+            user = User(
+                email=idinfo.get("email"),
+                username=idinfo.get("name"),
+                google_id=userid,
+                hashed_password="oauth_user_no_password" # Placeholder for OAuth users
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        access_token = create_access_token(data={"sub": str(user.id)})
+        return {"access_token": access_token, "token_type": "bearer"}
+
+    except ValueError:
+        # Invalid token
+        raise HTTPException(status_code=401, detail="Invalid Google token")
