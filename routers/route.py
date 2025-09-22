@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from database import get_db
@@ -11,7 +11,7 @@ router = APIRouter(
     tags=["routes"]
 )
 
-@router.get("/", response_model=List[route_schema.Route])
+@router.get("", response_model=List[route_schema.Route])
 def get_routes(db: Session = Depends(get_db), tags: Optional[List[str]] = Query(None)):
     """저장된 모든 경로의 목록을 JSON 형식으로 반환합니다. 태그를 사용하여 필터링할 수 있습니다."""
     if tags and len(tags) > 3:
@@ -46,6 +46,36 @@ def get_route_by_id(route_id: int, db: Session = Depends(get_db)):
     if route is None:
         raise HTTPException(status_code=404, detail="Route not found")
     return route
+
+
+@router.get("/{route_id}/gpx")
+def get_route_as_gpx(route_id: int, db: Session = Depends(get_db)):
+    """ID로 특정 경로를 조회하여 GPX 파일로 반환합니다."""
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+
+    if not route.points_json:
+        raise HTTPException(status_code=404, detail="Route has no points to export")
+
+    gpx_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="NuclPedal" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Route {route.id}</name>
+    <trkseg>
+'''
+    for point in route.points_json:
+        gpx_content += f'      <trkpt lat="{point["lat"]}" lon="{point["lon"]}"></trkpt>\n'
+
+    gpx_content += '''    </trkseg>
+  </trk>
+</gpx>'''
+
+    return Response(
+        content=gpx_content,
+        media_type="application/gpx+xml",
+        headers={"Content-Disposition": f"attachment; filename=route_{route_id}.gpx"}
+    )
 
 
 @router.patch("/{route_id}", response_model=route_schema.Route)

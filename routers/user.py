@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Response
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, timezone
@@ -96,3 +96,33 @@ def logout(db: Session = Depends(get_db), current_user: User = Depends(get_curre
 def get_profile_description_status(current_user: User = Depends(get_current_user)):
     is_null = current_user.profile_description is None
     return ProfileDescriptionStatus(is_null=is_null)
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_my_account(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Deletes the current user's account and anonymizes their data.
+    """
+    user_to_delete = db.query(User).filter(User.id == current_user.id).first()
+
+    if not user_to_delete:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Anonymize associated data
+    for post in user_to_delete.posts:
+        post.user_id = None
+    for comment in user_to_delete.comments:
+        comment.user_id = None
+    for report in user_to_delete.reports:
+        report.user_id = None
+    for route in user_to_delete.routes:
+        route.user_id = None
+    
+    user_to_delete.bookmarked_posts.clear()
+
+    db.delete(user_to_delete)
+    db.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
