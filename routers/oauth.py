@@ -241,9 +241,9 @@ class Token(BaseModel):
 async def google_token_signin(token: Token, db: Session = Depends(get_db)):
     if not GOOGLE_CLIENT_ANDROID_ID:
         raise HTTPException(status_code=500, detail="Google OAuth configuration missing.")
-
+    print(token)
     try:
-        idinfo = id_token.verify_oauth2_token(token.idToken, google_requests.Request(), GOOGLE_CLIENT_ANDROID_ID)
+        idinfo = id_token.verify_oauth2_token(token.idToken, google_requests.Request(), GOOGLE_CLIENT_ID)
 
         userid = idinfo['sub']
         user = db.query(User).filter(User.google_id == userid).first()
