@@ -12,7 +12,7 @@ from utils.auth import get_current_user
 
 router = APIRouter(prefix="/report", tags=["report"])
 
-@router.post("/", response_model=AllReportResponse)
+@router.post("", response_model=AllReportResponse)
 def create_report(
     report_data: ReportCreate,
     db: Session = Depends(get_db),
@@ -35,7 +35,7 @@ def create_report(
     db.refresh(new_report)
     return new_report
 
-@router.get("/", response_model=List[ReportResponse])
+@router.get("", response_model=List[ReportResponse])
 def get_all_reports(db: Session = Depends(get_db)):
     """
     Get all reports. (Note: This might need admin privileges in a real app)

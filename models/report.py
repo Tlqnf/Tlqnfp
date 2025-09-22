@@ -19,7 +19,7 @@ class Report(Base):
     lowest_high = Column(Integer, default=0)
     increase_slope = Column(Float, default=0)
     decrease_slope = Column(Float, default=0)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     route_id = Column(Integer, ForeignKey("routes.id"))
 
     route = relationship("Route", back_populates="reports")
