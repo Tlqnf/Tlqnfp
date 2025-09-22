@@ -90,22 +90,39 @@ async def google_callback(code: str, db: Session = Depends(get_db)):
         userinfo_response = await client.get(userinfo_url, headers={
             "Authorization": f"Bearer {access_token}"
         })
-        userinfo_response.raise_for_status()
         user_data = userinfo_response.json()
 
-        user = db.query(User).filter(User.google_id == user_data["sub"]).first()
+        google_id = user_data["sub"]
+        email = user_data["email"]
+        username = user_data["name"]
 
-        if not user:
-            # Create new user
-            user = User(
-                email=user_data["email"],
-                username=user_data["name"],
-                google_id=user_data["sub"],
-                hashed_password="oauth_user_no_password" # Placeholder for OAuth users
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+        # 1. Check for existing user by google_id
+        user = db.query(User).filter(User.google_id == google_id).first()
+
+        if user:
+            # User found by google_id, proceed with login
+            pass
+        else:
+            # 2. If not found by google_id, check for existing user by email
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                # User found by email, link google_id to existing user
+                if not user.google_id: # Only link if not already linked
+                    user.google_id = google_id
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+            else:
+                # 3. If not found by email, create a new user
+                user = User(
+                    email=email,
+                    username=username,
+                    google_id=google_id,
+                    hashed_password="oauth_user_no_password" # Placeholder for OAuth users
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
 
         access_token = create_access_token(data={"sub": str(user.id)})
         return {"access_token": access_token, "token_type": "bearer"}
@@ -154,22 +171,36 @@ async def naver_callback(code: str, state: str, db: Session = Depends(get_db)):
         userinfo_response.raise_for_status()
         user_data = userinfo_response.json()
         naver_user_id = user_data["response"]["id"]
-        naver_email = user_data["response"].get("email")
-        naver_nickname = user_data["response"].get("nickname")
+        email = user_data["response"].get("email")
+        username = user_data["response"].get("nickname") or email
 
+        # 1. Check for existing user by naver_id
         user = db.query(User).filter(User.naver_id == naver_user_id).first()
 
-        if not user:
-            # Create new user
-            user = User(
-                email=naver_email,
-                username=naver_nickname or naver_email, # Use nickname if available, else email
-                naver_id=naver_user_id,
-                hashed_password="oauth_user_no_password" # Placeholder for OAuth users
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+        if user:
+            # User found by naver_id, proceed with login
+            pass
+        else:
+            # 2. If not found by naver_id, check for existing user by email
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                # User found by email, link naver_id to existing user
+                if not user.naver_id: # Only link if not already linked
+                    user.naver_id = naver_user_id
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+            else:
+                # 3. If not found by email, create a new user
+                user = User(
+                    email=email,
+                    username=username,
+                    naver_id=naver_user_id,
+                    hashed_password="oauth_user_no_password"
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
 
         access_token = create_access_token(data={"sub": str(user.id)})
         return {"access_token": access_token, "token_type": "bearer"}
@@ -214,22 +245,36 @@ async def kakao_callback(code: str, db: Session = Depends(get_db)):
         userinfo_response.raise_for_status()
         user_data = userinfo_response.json()
         kakao_user_id = str(user_data["id"])
-        kakao_email = user_data["kakao_account"].get("email")
-        kakao_nickname = user_data["properties"].get("nickname")
+        email = user_data["kakao_account"].get("email")
+        username = user_data["properties"].get("nickname") or email
 
+        # 1. Check for existing user by kakao_id
         user = db.query(User).filter(User.kakao_id == kakao_user_id).first()
 
-        if not user:
-            # Create new user
-            user = User(
-                email=kakao_email,
-                username=kakao_nickname or kakao_email, # Use nickname if available, else email
-                kakao_id=kakao_user_id,
-                hashed_password="oauth_user_no_password" # Placeholder for OAuth users
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+        if user:
+            # User found by kakao_id, proceed with login
+            pass
+        else:
+            # 2. If not found by kakao_id, check for existing user by email
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                # User found by email, link kakao_id to existing user
+                if not user.kakao_id: # Only link if not already linked
+                    user.kakao_id = kakao_user_id
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+            else:
+                # 3. If not found by email, create a new user
+                user = User(
+                    email=email,
+                    username=username,
+                    kakao_id=kakao_user_id,
+                    hashed_password="oauth_user_no_password"
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
 
         access_token = create_access_token(data={"sub": str(user.id)})
         return {"access_token": access_token, "token_type": "bearer"}
@@ -245,19 +290,37 @@ async def google_token_signin(token: Token, db: Session = Depends(get_db)):
     try:
         idinfo = id_token.verify_oauth2_token(token.idToken, google_requests.Request(), GOOGLE_CLIENT_ID)
 
-        userid = idinfo['sub']
-        user = db.query(User).filter(User.google_id == userid).first()
+        google_id = idinfo['sub']
+        email = idinfo.get("email")
+        username = idinfo.get("name")
 
-        if not user:
-            user = User(
-                email=idinfo.get("email"),
-                username=idinfo.get("name"),
-                google_id=userid,
-                hashed_password="oauth_user_no_password" # Placeholder for OAuth users
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
+        # 1. Check for existing user by google_id
+        user = db.query(User).filter(User.google_id == google_id).first()
+
+        if user:
+            # User found by google_id, proceed with login
+            pass
+        else:
+            # 2. If not found by google_id, check for existing user by email
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                # User found by email, link google_id to existing user
+                if not user.google_id: # Only link if not already linked
+                    user.google_id = google_id
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+            else:
+                # 3. If not found by email, create a new user
+                user = User(
+                    email=email,
+                    username=username,
+                    google_id=google_id,
+                    hashed_password="oauth_user_no_password"
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
 
         access_token = create_access_token(data={"sub": str(user.id)})
         return {"access_token": access_token, "token_type": "bearer"}
