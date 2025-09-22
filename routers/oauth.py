@@ -282,6 +282,9 @@ async def kakao_callback(code: str, db: Session = Depends(get_db)):
 class Token(BaseModel):
     idToken: str
 
+class KakaoToken(BaseModel):
+    accessToken: str
+
 @router.post("/google/token")
 async def google_token_signin(token: Token, db: Session = Depends(get_db)):
     if not GOOGLE_CLIENT_ANDROID_ID:
@@ -328,3 +331,57 @@ async def google_token_signin(token: Token, db: Session = Depends(get_db)):
     except ValueError:
         # Invalid token
         raise HTTPException(status_code=401, detail="Invalid Google token")
+
+@router.post("/kakao/token")
+async def kakao_token_signin(kakao_token: KakaoToken, db: Session = Depends(get_db)):
+    if not KAKAO_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Kakao OAuth configuration missing.")
+
+    try:
+        userinfo_url = "https://kapi.kakao.com/v2/user/me"
+        async with httpx.AsyncClient() as client:
+            userinfo_response = await client.get(userinfo_url, headers={
+                "Authorization": f"Bearer {kakao_token.accessToken}"
+            })
+            userinfo_response.raise_for_status()
+            user_data = userinfo_response.json()
+
+        kakao_user_id = str(user_data["id"])
+        email = user_data["kakao_account"].get("email")
+        username = user_data["properties"].get("nickname") or email
+
+        # 1. Check for existing user by kakao_id
+        user = db.query(User).filter(User.kakao_id == kakao_user_id).first()
+
+        if user:
+            # User found by kakao_id, proceed with login
+            pass
+        else:
+            # 2. If not found by kakao_id, check for existing user by email
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                # User found by email, link kakao_id to existing user
+                if not user.kakao_id: # Only link if not already linked
+                    user.kakao_id = kakao_user_id
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+            else:
+                # 3. If not found by email, create a new user
+                user = User(
+                    email=email,
+                    username=username,
+                    kakao_id=kakao_user_id,
+                    hashed_password="oauth_user_no_password"
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+
+        access_token = create_access_token(data={"sub": str(user.id)})
+        return {"access_token": access_token, "token_type": "bearer"}
+
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Kakao API error: {e.response.text}")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid Kakao token or other error: {e}")
