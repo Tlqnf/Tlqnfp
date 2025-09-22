@@ -22,15 +22,16 @@ class S3Storage(BaseStorage):
         )
         self.bucket_name = S3_BUCKET_NAME
 
-    def save(self, file: UploadFile, filename: str) -> str:
+    def save(self, file: UploadFile, filename: str, folder: Optional[str] = None) -> str:
         try:
+            s3_key = f"{folder}/{filename}" if folder else filename
             self.s3_client.upload_fileobj(
                 file.file,
                 self.bucket_name,
-                filename,
+                s3_key,
                 ExtraArgs={'ContentType': file.content_type}
             )
             # Return the public URL of the file
-            return f"https://{self.bucket_name}.s3.{AWS_REGION}.amazonaws.com/{filename}"
+            return f"https://{self.bucket_name}.s3.{AWS_REGION}.amazonaws.com/{s3_key}"
         except NoCredentialsError:
             raise Exception("AWS credentials not available.")
