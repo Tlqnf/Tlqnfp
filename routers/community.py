@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, selectinload, aliased
 from typing import List, Optional
 import uuid
 import json # Add this import
-from pydantic import ValidationError # Add this import
+from pydantic import ValidationError, BaseModel  # Add this import
 from sqlalchemy import func
 from starlette import status
 
@@ -517,3 +517,17 @@ def unbookmark_post(post_id: int, db: Session = Depends(get_db), current_user: U
 
     current_user.bookmarked_posts.remove(post)
     db.commit()
+
+
+class IsBookmarked(BaseModel):
+    is_bookmarked: bool
+
+@router.get("/{post_id}/is-bookmarked", status_code=status.HTTP_200_OK, response_model=IsBookmarked)
+def is_bookmarked(post_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Checks if the current user has bookmarked a specific post."""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    is_bookmarked = post in current_user.bookmarked_posts
+    return {"is_bookmarked": is_bookmarked}
