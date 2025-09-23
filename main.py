@@ -67,3 +67,5 @@ app.include_router(user.router, dependencies=[Depends(oauth2_scheme)])
 @app.get("/")
 def root():
     return {"message": "Welcome to Pedal App MVP"}
+
+# 야호
