@@ -13,6 +13,22 @@ bookmarked_posts = Table(
     Column('post_id', Integer, ForeignKey('posts.id'), primary_key=True)
 )
 
+# Define the association table for post likes
+post_likes = Table(
+    'post_likes',
+    Base.metadata,
+    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('post_id', Integer, ForeignKey('posts.id'), primary_key=True)
+)
+
+# Define the association table for comment likes
+comment_likes = Table(
+    'comment_likes',
+    Base.metadata,
+    Column('user_id', Integer, ForeignKey('users.id'), primary_key=True),
+    Column('comment_id', Integer, ForeignKey('comments.id'), primary_key=True)
+)
+
 
 class Post(Base):
     __tablename__ = "posts"
@@ -48,6 +64,11 @@ class Post(Base):
         secondary=bookmarked_posts,
         back_populates="bookmarked_posts"
     )
+    liked_by_users = relationship(
+        "User",
+        secondary=post_likes,
+        back_populates="liked_posts"
+    )
 
 
 class Comment(Base):
@@ -71,3 +92,8 @@ class Comment(Base):
     author = relationship("User", back_populates="comments")
     post = relationship("Post", back_populates="comments")
     report = relationship("Report", back_populates="comments")
+    liked_by_users = relationship(
+        "User",
+        secondary=comment_likes,
+        back_populates="liked_comments"
+    )

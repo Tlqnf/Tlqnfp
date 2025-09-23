@@ -27,5 +27,15 @@ class User(Base):
         secondary="bookmarked_posts",
         back_populates="bookmarked_by_users"
     )
+    liked_posts = relationship(
+        "Post",
+        secondary="post_likes",
+        back_populates="liked_by_users"
+    )
+    liked_comments = relationship(
+        "Comment",
+        secondary="comment_likes",
+        back_populates="liked_by_users"
+    )
     notifications = relationship("Notification", back_populates="user")
     mentions = relationship("Mention", back_populates="user", cascade="all, delete-orphan")

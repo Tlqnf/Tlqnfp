@@ -185,24 +185,39 @@ def delete_board(post_id: int, db: Session = Depends(get_db), current_user: User
     return {"message": "글 삭제 성공"}
 
 
-@router.post("/{post_id}/post-like")
-def recommend_post(post_id: int, db: Session = Depends(get_db)):
-    print(post_id)
+@router.post("/{post_id}/like", response_model=dict)
+def toggle_post_like(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Toggles the current user's like status for a specific post."""
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
-        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-    post.like_count += 1
-    db.commit()
-    return {"message": "좋아요 증가", "like_count": post.like_count}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
 
-@router.post("/{post_id}/post-unlike")
-def recommend_post(post_id: int, db: Session = Depends(get_db)):
+    if current_user in post.liked_by_users:
+        # User has already liked the post, so unlike it
+        post.liked_by_users.remove(current_user)
+        post.like_count -= 1
+        action = "unliked"
+    else:
+        # User has not liked the post, so like it
+        post.liked_by_users.append(current_user)
+        post.like_count += 1
+        action = "liked"
+
+    db.commit()
+    db.refresh(post)
+
+    return {"status": action, "like_count": post.like_count}
+
+
+@router.get("/{post_id}/is_liked", response_model=dict)
+def check_post_liked_status(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Checks if the current user has liked a specific post."""
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
-        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-    post.like_count -= 1
-    db.commit()
-    return {"message": "좋아요 감소", "like_count": post.like_count}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+
+    is_liked = current_user in post.liked_by_users
+    return {"is_liked": is_liked}
 
 # ---------------------- 댓글 ----------------------
 @router.post("/{post_id}/comments", response_model=CommentSchema)
@@ -330,25 +345,39 @@ def read_replies(comment_id: int, db: Session = Depends(get_db)):
 # -------------------------------
 
 
-#댓글 좋아요
-@router.post("/{comment_id}/comment-like")
-def recommend_post(comment_id: int, db: Session = Depends(get_db)):
+@router.post("/comments/{comment_id}/like", response_model=dict)
+def toggle_comment_like(comment_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Toggles the current user's like status for a specific comment."""
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment:
-        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-    comment.like_count += 1
-    db.commit()
-    return {"message": "좋아요 증가", "like_count": comment.like_count}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
 
-#댓글 좋아요 취소
-@router.post("/{comment_id}/comment-unlike")
-def recommend_post(comment_id: int, db: Session = Depends(get_db)):
+    if current_user in comment.liked_by_users:
+        # User has already liked the comment, so unlike it
+        comment.liked_by_users.remove(current_user)
+        comment.like_count -= 1
+        action = "unliked"
+    else:
+        # User has not liked the comment, so like it
+        comment.liked_by_users.append(current_user)
+        comment.like_count += 1
+        action = "liked"
+
+    db.commit()
+    db.refresh(comment)
+
+    return {"status": action, "like_count": comment.like_count}
+
+
+@router.get("/comments/{comment_id}/is_liked", response_model=dict)
+def check_comment_liked_status(comment_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Checks if the current user has liked a specific comment."""
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment:
-        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-    comment.like_count -= 1
-    db.commit()
-    return {"message": "좋아요 감소", "like_count": comment.like_count}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+
+    is_liked = current_user in comment.liked_by_users
+    return {"is_liked": is_liked}
 
 
 @router.get("/me/bookmarked", response_model=List[PostSearchResponse])
