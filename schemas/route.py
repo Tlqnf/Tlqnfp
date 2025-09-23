@@ -7,6 +7,7 @@ from schemas.base import Route, SEOUL_TZ, convert_datetime_to_korea_time
 class RouteUpdate(BaseModel):
     name: Optional[str] = None
     tags: Optional[List[str]] = None
+    points_json: Optional[List[Dict[str, Any]]] = None
 
 class RoutePointsResponse(BaseModel):
     points_json: Optional[List[Dict[str, Any]]] = []
