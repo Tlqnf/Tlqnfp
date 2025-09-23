@@ -1,11 +1,10 @@
 import os
 import httpx
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException, status
-from fastapi.params import Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from collections import deque
-from database import SessionLocal
+from database import SessionLocal, get_db
 from models import Route, Report, User
 from utill.tracking_calculator import TrackingSession
 from dotenv import load_dotenv
@@ -22,6 +21,43 @@ SLIDING_WINDOW_SIZE = 10
 class GPSData(BaseModel):
     lat: float = Field(..., ge=-90, le=90)
     lon: float = Field(..., ge=-180, le=180)
+
+
+@router.get("/start-session", response_model=dict)
+async def start_live_recording_session(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Creates placeholder Route and Report records to start a live recording session.
+    Returns the IDs of the created Route and Report.
+    """
+    try:
+        # 1. Create placeholder Route
+        new_route = Route(points_json=[], user_id=current_user.id)
+        db.add(new_route)
+        db.commit()
+        db.refresh(new_route)
+
+        # 2. Create placeholder Report
+        new_report = Report(route_id=new_route.id, user_id=current_user.id)
+        db.add(new_report)
+        db.commit()
+        db.refresh(new_report)
+
+        return {
+            "status": "session_started",
+            "route_id": new_route.id,
+            "report_id": new_report.id
+        }
+    except Exception as e:
+        db.rollback()  # Rollback in case of error
+        print(f"Error during start_live_recording_session: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to start recording session"
+        )
+
 
 def decode_polyline(polyline_str):
     index, lat, lng = 0, 0, 0
@@ -51,6 +87,7 @@ def decode_polyline(polyline_str):
 
     return coordinates
 
+
 async def correct_path_with_valhalla(points: list[GPSData]):
     if not VALHALLA_URL or not points or len(points) < 2:
         return []
@@ -73,6 +110,7 @@ async def correct_path_with_valhalla(points: list[GPSData]):
         except httpx.RequestError as e:
             print(f"Valhalla API request failed: {e}")
             return []
+
 
 def save_session_data(db: Session, session: TrackingSession, route_id: int, report_id: int):
     """Helper function to update route and report data."""
@@ -103,46 +141,6 @@ def save_session_data(db: Session, session: TrackingSession, route_id: int, repo
         db.delete(report_to_update)
         db.commit()
         print(f"Session for route {route_id} ended. No data, placeholder records deleted.")
-
-
-@router.post("/start-session", response_model=dict)
-async def start_live_recording_session(
-    db: Session = Depends(SessionLocal),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Creates placeholder Route and Report records to start a live recording session.
-    Returns the IDs of the created Route and Report.
-    """
-    new_route_id = None
-    new_report_id = None
-
-    try:
-        # 1. Create placeholder Route
-        new_route = Route(points_json=[], user_id=current_user.id)
-        db.add(new_route)
-        db.commit()
-        db.refresh(new_route)
-        new_route_id = new_route.id
-
-        # 2. Create placeholder Report
-        new_report = Report(route_id=new_route_id, user_id=current_user.id)
-        db.add(new_report)
-        db.commit()
-        db.refresh(new_report)
-        new_report_id = new_report.id
-
-        return {
-            "status": "session_started",
-            "route_id": new_route_id,
-            "report_id": new_report_id
-        }
-    except Exception as e:
-        db.rollback() # Rollback in case of error
-        print(f"Error during start_live_recording_session: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to start recording session")
-    finally:
-        db.close()
 
 
 @router.websocket("/ws/record-route")
