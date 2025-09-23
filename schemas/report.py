@@ -7,7 +7,7 @@ class ReportCreate(BaseModel):
     route_id: int
     health_time: int = 0
     half_time: int = 0
-    distance: int = 0
+    distance: float = 0.0
     kcal: int = 0
     average_speed: float = 0.0
     highest_speed: float = 0.0
@@ -97,7 +97,7 @@ class WeeklyReportSummary(BaseModel):
 class ReportUpdate(BaseModel):
     health_time: Optional[int] = None
     half_time: Optional[int] = None
-    distance: Optional[int] = None
+    distance: Optional[float] = None
     kcal: Optional[int] = None
     average_speed: Optional[float] = None
     highest_speed: Optional[float] = None
