@@ -100,6 +100,8 @@ def update_route(
         if len(route_update.tags) > 3:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You can add a maximum of 3 tags.")
         route.tags = route_update.tags
+    if route_update.points_json is not None:
+        route.points_json = route_update.points_json
 
     db.commit()
     db.refresh(route)
