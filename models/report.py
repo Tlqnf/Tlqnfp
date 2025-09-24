@@ -8,7 +8,7 @@ class Report(Base):
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     health_time = Column(Integer, default=0)
     half_time = Column(Integer, default=0)
-    distance = Column(Integer, default=0)
+    distance = Column(Float, default=0.0)
     kcal = Column(Integer, default=0)
     average_speed = Column(Float, default=0)
     highest_speed = Column(Float, default=0)
