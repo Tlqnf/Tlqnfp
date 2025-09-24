@@ -112,7 +112,10 @@ def create_board(
         db.commit()
         db.refresh(new_post)
 
-    return new_post
+    post_response = PostCreateResponse.model_validate(new_post)
+    if new_post.report and new_post.report.route:
+        post_response.route_name = new_post.report.route.name
+    return post_response
 
 
 @router.get("/{post_id}", response_model=PostResponse)
@@ -142,35 +145,77 @@ def get_board(
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
 
     post, count = result
-    return PostResponse.model_validate(post, update={'comment_count': count})
+    post_response = PostResponse.model_validate(post, update={'comment_count': count})
+    if post.report and post.report.route:
+        post_response.route_name = post.report.route.name
+    return post_response
 
 
 @router.patch("/{post_id}", response_model=PostResponse)
 def update_board(
     post_id: int,
-    post_update: PostUpdate,
+    post_update: PostUpdate, # Use Depends() for Pydantic model in Form data
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     map_image: Optional[UploadFile] = File(None),
+    new_images: Optional[List[UploadFile]] = File(None),
     storage: BaseStorage = Depends(get_storage_manager),
 ):
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
-        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="게시글을 찾을 수 없습니다.")
     if post.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="수정 권한이 없습니다.")
+
+    # Update post fields
     for key, value in post_update.dict(exclude_unset=True).items():
         setattr(post, key, value)
 
-    if map_image and map_image.filename:
-        file_extension = map_image.filename.split(".")[-1]
-        filename = f"map_{uuid.uuid4()}.{file_extension}"
-        map_image_url = storage.save(file=map_image, filename=filename, folder="board")
-        post.map_image_url = map_image_url
+    # Handle map image update
+    # If map_image is provided (even if it's None to clear it)
+    if map_image is not None:
+        # If a new file is uploaded
+        if map_image.filename:
+            # Delete old map image if it exists
+            if post.map_image_url:
+                storage.delete(post.map_image_url)
+            file_extension = map_image.filename.split(".")[-1]
+            filename = f"map_{uuid.uuid4()}.{file_extension}"
+            map_image_url = storage.save(file=map_image, filename=filename, folder="board")
+            post.map_image_url = map_image_url
+        else: # If map_image is explicitly None (no filename), it means client wants to remove it
+            if post.map_image_url:
+                storage.delete(post.map_image_url)
+            post.map_image_url = None
+
+    # Handle general images
+    current_images = {img.id: img for img in post.images}
+    ids_to_keep = set(post_update.images_to_keep_ids) if post_update.images_to_keep_ids else set()
+
+    # Delete images not in ids_to_keep
+    for img_id, img_obj in current_images.items():
+        if img_id not in ids_to_keep:
+            storage.delete(img_obj.url) # Delete from storage
+            db.delete(img_obj) # Delete from database
+            # The relationship will be updated automatically by SQLAlchemy's cascade or refresh
+
+    # Add new images
+    if new_images:
+        for image_file in new_images:
+            if image_file.filename:
+                file_extension = image_file.filename.split(".")[-1]
+                filename = f"{uuid.uuid4()}.{file_extension}"
+                image_url = storage.save(file=image_file, filename=filename, folder="board")
+                new_image = Image(url=image_url, post_id=post.id)
+                db.add(new_image)
+                post.images.append(new_image) # Add to relationship
 
     db.commit()
     db.refresh(post)
-    return post
+    post_response = PostResponse.model_validate(post)
+    if post.report and post.report.route:
+        post_response.route_name = post.report.route.name
+    return post_response
 
 
 @router.delete("/{post_id}")

@@ -34,6 +34,7 @@ class PostResponse(BaseModel):
     time: Optional[float] = None
     map_image_url: Optional[str] = None
     author: Optional[UserResponse] = None # Add author relationship
+    route_name: Optional[str] = None # New field for route name
 
     @computed_field
     @property
@@ -113,6 +114,7 @@ class PostCreate(BaseModel):
 class PostUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
+    images_to_keep_ids: Optional[List[int]] = None # New field
 
 
 class PostCreateResponse(BaseModel):
@@ -127,6 +129,7 @@ class PostCreateResponse(BaseModel):
     public: bool
     map_image_url: Optional[str] = None
     report: Optional[ReportWithRouteResponse] = Field(None, exclude=True)
+    route_name: Optional[str] = None # New field for route name
 
     @computed_field
     @property
