@@ -474,7 +474,7 @@ def get_my_posts(
     ).group_by(Comment.post_id).subquery()
 
     my_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
-                                   .options(selectinload(Post.report), selectinload(Post.images))
+                                   .options(selectinload(Post.report).selectinload(Report.route), selectinload(Post.images))
                                    .filter(Post.user_id == current_user.id)
                                    .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
                                    .order_by(Post.created_at.desc()).offset(skip).limit(page_size).all())
@@ -483,6 +483,9 @@ def get_my_posts(
     for post, count in my_posts_with_comment_count:
         model = PostSearchResponse.model_validate(post)
         model.comment_count = count
+        if post.report and post.report.route:
+            model.route_id = post.report.route.id
+            model.route_name = post.report.route.name
         response.append(model)
 
     return response
@@ -500,7 +503,7 @@ def get_my_recent_posts(
     ).group_by(Comment.post_id).subquery()
 
     my_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
-                                   .options(selectinload(Post.report), selectinload(Post.images))
+                                   .options(selectinload(Post.report).selectinload(Report.route), selectinload(Post.images))
                                    .filter(Post.user_id == current_user.id)
                                    .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
                                    .order_by(Post.created_at.desc()).limit(4).all())
@@ -509,6 +512,9 @@ def get_my_recent_posts(
     for post, count in my_posts_with_comment_count:
         model = PostSearchResponse.model_validate(post)
         model.comment_count = count
+        if post.report and post.report.route:
+            model.route_id = post.report.route.id
+            model.route_name = post.report.route.name
         response.append(model)
 
     return response
