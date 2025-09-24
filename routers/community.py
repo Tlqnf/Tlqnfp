@@ -165,12 +165,11 @@ def update_board(
     storage: BaseStorage = Depends(get_storage_manager),
 ):
     try:
-        post_update_dict = json.loads(post_update_str)
-        post_update = PostUpdate(**post_update_dict)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON format for post_update")
+        post_update = PostUpdate.model_validate_json(post_update_str)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON format for post_update")
 
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
