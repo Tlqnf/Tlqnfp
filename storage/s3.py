@@ -37,3 +37,14 @@ class S3Storage(BaseStorage):
             return f"https://{self.bucket_name}.s3.{AWS_REGION}.amazonaws.com/{s3_key}"
         except NoCredentialsError:
             raise Exception("AWS credentials not available.")
+
+    def delete(self, file_url: str) -> None:
+        try:
+            # Extract the S3 key from the file_url
+            # Assuming file_url is in the format: https://<bucket_name>.s3.<region>.amazonaws.com/<s3_key>
+            s3_key = "/".join(file_url.split("/")[3:])
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=s3_key)
+        except NoCredentialsError:
+            raise Exception("AWS credentials not available.")
+        except Exception as e:
+            print(f"Error deleting S3 object {file_url}: {e}") # Or log a warning
