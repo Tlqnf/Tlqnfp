@@ -157,13 +157,21 @@ def get_board(
 @router.patch("/{post_id}", response_model=PostResponse)
 def update_board(
     post_id: int,
-    post_update: PostUpdate, # Use Depends() for Pydantic model in Form data
+    post_update_str: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     map_image: Optional[UploadFile] = File(None),
     new_images: Optional[List[UploadFile]] = File(None),
     storage: BaseStorage = Depends(get_storage_manager),
 ):
+    try:
+        post_update_dict = json.loads(post_update_str)
+        post_update = PostUpdate(**post_update_dict)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON format for post_update")
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="게시글을 찾을 수 없습니다.")
