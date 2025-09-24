@@ -176,6 +176,7 @@ class PostSearchResponse(BaseModel):
     public: bool
     map_image_url: Optional[str] = None
     report: Optional[ReportWithRouteResponse] = Field(None, exclude=True)
+    route_name: Optional[str] = None # New field for route name
 
     @computed_field
     @property
