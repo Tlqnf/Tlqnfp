@@ -12,14 +12,9 @@ router = APIRouter(
 )
 
 @router.get("", response_model=List[route_schema.Route])
-def get_routes(db: Session = Depends(get_db), tags: Optional[List[str]] = Query(None)):
-    """저장된 모든 경로의 목록을 JSON 형식으로 반환합니다. 태그를 사용하여 필터링할 수 있습니다."""
-    if tags and len(tags) > 3:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You can query with a maximum of 3 tags.")
-
+def get_routes(db: Session = Depends(get_db)):
+    """저장된 모든 경로의 목록을 JSON 형식으로 반환합니다."""
     query = db.query(Route)
-    if tags:
-        query = query.filter(Route.tags.contains(tags))
     routes = query.all()
     return routes
 
@@ -96,10 +91,6 @@ def update_route(
 
     if route_update.name is not None:
         route.name = route_update.name
-    if route_update.tags is not None:
-        if len(route_update.tags) > 3:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You can add a maximum of 3 tags.")
-        route.tags = route_update.tags
     if route_update.points_json is not None:
         route.points_json = route_update.points_json
 
