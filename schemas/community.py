@@ -170,6 +170,7 @@ class PostSearchResponse(BaseModel):
     comment_count: int = 0
     user_id: Optional[int] = None
     report_id: Optional[int] = None
+    route_id: Optional[int] = None # New field for route ID
     created_at: datetime
     images: List[Image] = []
     hash_tag: List[str]

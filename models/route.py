@@ -15,7 +15,7 @@ class Route(Base):
     start_point = Column(JSONB, nullable=True)
     end_point = Column(JSONB, nullable=True)
     points_json = Column(JSONB)  # 보정된 좌표들을 저장할 JSONB 필드
-    tags = Column(JSONB, nullable=True)
+
 
     author = relationship("User", back_populates="routes")
     reports = relationship("Report", back_populates="route", cascade="all, delete-orphan")
