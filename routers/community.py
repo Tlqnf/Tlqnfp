@@ -157,7 +157,7 @@ def get_board(
 @router.patch("/{post_id}", response_model=PostResponse)
 def update_board(
     post_id: int,
-    post_update_str: str = Form(...),
+    post_update: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     map_image: Optional[UploadFile] = File(None),
@@ -165,7 +165,7 @@ def update_board(
     storage: BaseStorage = Depends(get_storage_manager),
 ):
     try:
-        post_update = PostUpdate.model_validate_json(post_update_str)
+        post_update_data = PostUpdate.model_validate_json(post_update)
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors())
     except json.JSONDecodeError:
@@ -178,7 +178,7 @@ def update_board(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="수정 권한이 없습니다.")
 
     # Update post fields
-    for key, value in post_update.dict(exclude_unset=True).items():
+    for key, value in post_update_data.dict(exclude_unset=True).items():
         setattr(post, key, value)
 
     # Handle map image update
@@ -200,7 +200,7 @@ def update_board(
 
     # Handle general images
     current_images = {img.id: img for img in post.images}
-    ids_to_keep = set(post_update.images_to_keep_ids) if post_update.images_to_keep_ids else set()
+    ids_to_keep = set(post_update_data.images_to_keep_ids) if post_update_data.images_to_keep_ids else set()
 
     # Delete images not in ids_to_keep
     for img_id, img_obj in current_images.items():
