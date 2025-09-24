@@ -179,6 +179,13 @@ class PostSearchResponse(BaseModel):
     report: Optional[ReportWithRouteResponse] = Field(None, exclude=True)
     route_name: Optional[str] = None # New field for route name
 
+    @field_validator('hash_tag', mode='before')
+    @classmethod
+    def hashtags_to_empty_list(cls, v):
+        if v is None:
+            return []
+        return v
+
     @computed_field
     @property
     def speed(self) -> Optional[float]:
