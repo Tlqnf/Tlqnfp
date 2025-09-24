@@ -157,13 +157,21 @@ def get_board(
 @router.patch("/{post_id}", response_model=PostResponse)
 def update_board(
     post_id: int,
-    post_update: PostUpdate, # Use Depends() for Pydantic model in Form data
+    post_update_str: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     map_image: Optional[UploadFile] = File(None),
     new_images: Optional[List[UploadFile]] = File(None),
     storage: BaseStorage = Depends(get_storage_manager),
 ):
+    try:
+        post_update_dict = json.loads(post_update_str)
+        post_update = PostUpdate(**post_update_dict)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON format for post_update")
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="게시글을 찾을 수 없습니다.")
@@ -222,12 +230,21 @@ def update_board(
 
 
 @router.delete("/{post_id}")
-def delete_board(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    post = db.query(Post).filter(Post.id == post_id).first()
+def delete_board(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), storage: BaseStorage = Depends(get_storage_manager)):
+    post = db.query(Post).options(selectinload(Post.images)).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
     if post.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="삭제 권한이 없습니다.")
+
+    # Delete images from storage
+    for image in post.images:
+        storage.delete(image.url)
+
+    # Delete map image from storage if it exists
+    if post.map_image_url:
+        storage.delete(post.map_image_url)
+
     db.delete(post)
     db.commit()
     return {"message": "글 삭제 성공"}
