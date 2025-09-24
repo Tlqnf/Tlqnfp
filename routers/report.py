@@ -122,21 +122,21 @@ def get_weekly_report_summary(db: Session = Depends(get_db), current_user: User 
     if not reports:
         return WeeklyReportSummary(
             routes_taken_count=0,
-            total_activity_time_hours=0,
-            total_activity_time_remaining_minutes=0,
+            total_activity_time_formatted="00:00:00",
             total_activity_distance_km=0
         )
 
     routes_taken_count = len(reports)
-    total_activity_time_total_minutes = sum(report.health_time for report in reports) / 60 # Convert seconds to minutes (float)
-    total_activity_time_hours = int(total_activity_time_total_minutes // 60)
-    total_activity_time_remaining_minutes = round(total_activity_time_total_minutes % 60)
+    total_activity_time_seconds = sum(report.health_time for report in reports)
+    hours = total_activity_time_seconds // 3600
+    minutes = (total_activity_time_seconds % 3600) // 60
+    seconds = total_activity_time_seconds % 60
+    total_activity_time_formatted = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
     total_activity_distance_km = sum(report.distance for report in reports) / 1000 # Convert meters to kilometers
 
     return WeeklyReportSummary(
         routes_taken_count=routes_taken_count,
-        total_activity_time_hours=total_activity_time_hours,
-        total_activity_time_remaining_minutes=total_activity_time_remaining_minutes,
+        total_activity_time_formatted=total_activity_time_formatted,
         total_activity_distance_km=total_activity_distance_km
     )
 
