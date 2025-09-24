@@ -51,6 +51,8 @@ def get_boards(
     for post, count in posts_with_comment_count:
         model = PostSearchResponse.model_validate(post)
         model.comment_count = count
+        if post.report and post.report.route:
+            model.route_name = post.report.route.name
         response.append(model)
 
     return response
