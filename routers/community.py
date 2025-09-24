@@ -222,12 +222,21 @@ def update_board(
 
 
 @router.delete("/{post_id}")
-def delete_board(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    post = db.query(Post).filter(Post.id == post_id).first()
+def delete_board(post_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), storage: BaseStorage = Depends(get_storage_manager)):
+    post = db.query(Post).options(selectinload(Post.images)).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
     if post.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="삭제 권한이 없습니다.")
+
+    # Delete images from storage
+    for image in post.images:
+        storage.delete(image.url)
+
+    # Delete map image from storage if it exists
+    if post.map_image_url:
+        storage.delete(post.map_image_url)
+
     db.delete(post)
     db.commit()
     return {"message": "글 삭제 성공"}
