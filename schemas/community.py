@@ -140,7 +140,7 @@ class PostCreateResponse(BaseModel):
 
     @computed_field
     @property
-    def distance(self) -> Optional[int]:
+    def distance(self) -> Optional[float]:
         if self.report:
             return self.report.distance
         return None
@@ -195,7 +195,7 @@ class PostSearchResponse(BaseModel):
 
     @computed_field
     @property
-    def distance(self) -> Optional[int]:
+    def distance(self) -> Optional[float]:
         if self.report:
             return self.report.distance
         return None

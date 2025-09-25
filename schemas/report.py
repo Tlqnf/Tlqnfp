@@ -28,6 +28,7 @@ class ReportResponse(BaseModel):
     increase_slope: float
     created_at: datetime
     route_id: int
+    distance: float # Changed from int to float
 
     class Config:
         from_attributes = True
@@ -37,7 +38,7 @@ class AllReportResponse(BaseModel):
     id: int
     health_time: Optional[int] = None
     half_time: Optional[int] = None
-    distance: int
+    distance: float
     kcal: int
     average_speed: float
     highest_speed: float
@@ -56,7 +57,7 @@ class AllReportResponse(BaseModel):
         json_encoders = {datetime: convert_datetime_to_korea_time} # Add this
 
 class ReportListResponse(BaseModel):
-    distance: int
+    distance: float # Changed from int to float
     average_speed: float
     health_time: int
 
@@ -68,7 +69,7 @@ class ReportWithRouteResponse(BaseModel):
     id: int
     health_time: Optional[int] = None
     half_time: Optional[int] = None
-    distance: int
+    distance: float
     kcal: int
     average_speed: float
     highest_speed: float
