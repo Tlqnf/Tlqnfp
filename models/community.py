@@ -97,3 +97,4 @@ class Comment(Base):
         secondary=comment_likes,
         back_populates="liked_comments"
     )
+    notifications = relationship("Notification", back_populates="comment", cascade="all, delete-orphan")
