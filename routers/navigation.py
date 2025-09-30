@@ -53,6 +53,8 @@ async def get_valhalla_route(locations: list[dict], costing: str = "bicycle"):
         "directions_options": {"units": "meters"}
     }
 
+    print(payload)
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(f"{VALHALLA_URL}/route", json=payload, timeout=10.0)
