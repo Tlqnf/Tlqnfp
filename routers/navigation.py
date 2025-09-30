@@ -53,8 +53,6 @@ async def get_valhalla_route(locations: list[dict], costing: str = "bicycle"):
         "directions_options": {"units": "meters"}
     }
 
-    print(payload)
-
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(f"{VALHALLA_URL}/route", json=payload, timeout=10.0)
@@ -176,12 +174,16 @@ async def guide_existing_route(request: GuideRouteRequest, db: Session = Depends
     if not route:
         raise HTTPException(status_code=404, detail="경로를 찾을 수 없습니다.")
     
-    # Convert stored points_json to Valhalla locations format
-    # NOTE: Temporarily removing 'type: "through"' to debug Valhalla 500 error.
-    # This will likely cause multiple "You have arrived" messages to appear.
     locations = []
-    for point in route.points_json:
-        locations.append({"lat": point["lat"], "lon": point["lon"]})
+    if len(route.points_json) > 49:
+        # Sample every Nth point to keep the total number of points under 50
+        step = len(route.points_json) // 49
+        for i in range(0, len(route.points_json), step):
+            point = route.points_json[i]
+            locations.append({"lat": point["lat"], "lon": point["lon"]})
+    else:
+        for point in route.points_json:
+            locations.append({"lat": point["lat"], "lon": point["lon"]})
 
     if len(locations) < 2:
         raise HTTPException(status_code=400, detail="경로 안내를 위한 충분한 좌표가 없습니다.")
