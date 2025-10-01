@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # Add HTTPBearer
 from database import init_db # Changed import
 from routers import (
-    community, report, live_record, route, oauth, navigation, user
+    community, report, live_record, route, oauth, navigation, user, notice
 )
 from models import User, Post, Comment, Report, Route
 from starlette.staticfiles import StaticFiles # Add this import
@@ -60,6 +60,7 @@ app.include_router(route.router, dependencies=[Depends(oauth2_scheme)])
 app.include_router(oauth.router) # OAuth router handles authentication itself, no need for external dependency
 app.include_router(navigation.router, dependencies=[Depends(oauth2_scheme)])
 app.include_router(user.router, dependencies=[Depends(oauth2_scheme)])
+app.include_router(notice.router, dependencies=[Depends(oauth2_scheme)])
 
 # =========================
 # 루트 엔드포인트

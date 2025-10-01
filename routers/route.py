@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List
 from database import get_db
-from models import Route, User
+from models import User
 import schemas.route as route_schema
 from utils.auth import get_current_user
+from services import route as route_service
 
 router = APIRouter(
     prefix="/routes",
@@ -14,13 +15,7 @@ router = APIRouter(
 @router.get("", response_model=List[route_schema.Route])
 def get_routes(db: Session = Depends(get_db)):
     """저장된 모든 경로의 목록을 JSON 형식으로 반환합니다."""
-    query = db.query(Route)
-    routes = query.all()
-    return routes
-
-
-
-
+    return route_service.get_routes(db)
 
 @router.get("/me", response_model=List[route_schema.Route])
 def get_my_routes(
@@ -30,47 +25,18 @@ def get_my_routes(
     page_size: int = Query(4, ge=1, le=100)
 ):
     """특정 유저의 경로를 불러올 수 있음."""
-    skip = (page - 1) * page_size
-    routes = db.query(Route).filter(Route.user_id == current_user.id).order_by(Route.created_at.desc()).offset(skip).limit(page_size).all()
-    return routes
+    return route_service.get_my_routes(db, current_user, page, page_size)
 
 @router.get("/{route_id}", response_model=route_schema.Route)
 def get_route_by_id(route_id: int, db: Session = Depends(get_db)):
     """ID로 특정 경로를 조회합니다."""
-    route = db.query(Route).filter(Route.id == route_id).first()
-    if route is None:
-        raise HTTPException(status_code=404, detail="Route not found")
-    return route
+    return route_service.get_route_by_id(route_id, db)
 
 
 @router.get("/{route_id}/gpx")
 def get_route_as_gpx(route_id: int, db: Session = Depends(get_db)):
     """ID로 특정 경로를 조회하여 GPX 파일로 반환합니다."""
-    route = db.query(Route).filter(Route.id == route_id).first()
-    if not route:
-        raise HTTPException(status_code=404, detail="Route not found")
-
-    if not route.points_json:
-        raise HTTPException(status_code=404, detail="Route has no points to export")
-
-    gpx_content = f'''<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="NuclPedal" xmlns="http://www.topografix.com/GPX/1/1">
-  <trk>
-    <name>Route {route.id}</name>
-    <trkseg>
-'''
-    for point in route.points_json:
-        gpx_content += f'      <trkpt lat="{point["lat"]}" lon="{point["lon"]}"></trkpt>\n'
-
-    gpx_content += '''    </trkseg>
-  </trk>
-</gpx>'''
-
-    return Response(
-        content=gpx_content,
-        media_type="application/gpx+xml",
-        headers={"Content-Disposition": f"attachment; filename=route_{route_id}.gpx"}
-    )
+    return route_service.get_route_as_gpx(route_id, db)
 
 
 @router.patch("/{route_id}", response_model=route_schema.Route)
@@ -81,21 +47,4 @@ def update_route(
     current_user: User = Depends(get_current_user)
 ):
     """경로의 이름이나 태그를 수정합니다."""
-    route = db.query(Route).filter(Route.id == route_id).first()
-
-    if not route:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
-
-    if route.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this route")
-
-    if route_update.name is not None:
-        route.name = route_update.name
-    if route_update.points_json is not None:
-        route.points_json = route_update.points_json
-
-    db.commit()
-    db.refresh(route)
-    return route
-
-
+    return route_service.update_route(route_id, route_update, db, current_user)

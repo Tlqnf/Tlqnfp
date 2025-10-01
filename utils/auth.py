@@ -4,7 +4,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from database import get_db
 from models.user import User
-from routers.oauth import SECRET_KEY, ALGORITHM # Import from oauth router
+from services.oauth import SECRET_KEY, ALGORITHM # Import from oauth router
 
 # This tells FastAPI that we expect a Bearer token in the Authorization header
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token") # tokenUrl should point to your token endpoint
