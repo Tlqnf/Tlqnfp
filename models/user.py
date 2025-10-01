@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -17,6 +17,7 @@ class User(Base):
     google_id = Column(String, unique=True, nullable=True)
     naver_id = Column(String, unique=True, nullable=True)
     kakao_id = Column(String, unique=True, nullable=True)
+    is_admin = Column(Boolean, default=False, nullable=False)
 
     posts = relationship("Post", back_populates="author")
     comments = relationship("Comment", back_populates="author")

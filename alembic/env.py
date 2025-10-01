@@ -8,7 +8,7 @@ from alembic import context
 # Import your models' Base
 from database import Base
 # Import your models
-from models import community, report, route, user
+from models import community, report, route, user, notice
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
