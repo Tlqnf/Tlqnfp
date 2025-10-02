@@ -39,6 +39,11 @@ def get_route_as_gpx(route_id: int, db: Session = Depends(get_db)):
     return route_service.get_route_as_gpx(route_id, db)
 
 
+@router.get("/{route_id}/turn-points", response_model=List[dict])
+def get_turn_points(route_id: int, db: Session = Depends(get_db)):
+    """Get the points where the direction changes in a route."""
+    return route_service.get_turn_points(route_id, db)
+
 @router.patch("/{route_id}", response_model=route_schema.Route)
 def update_route(
     route_id: int,
