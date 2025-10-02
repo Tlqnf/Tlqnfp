@@ -55,6 +55,65 @@ def get_route_as_gpx(route_id: int, db: Session) -> Response:
         headers={"Content-Disposition": f"attachment; filename=route_{route_id}.gpx"}
     )
 
+
+import math
+
+def calculate_bearing(lat1, lon1, lat2, lon2):
+    """Calculate the bearing between two points."""
+    lat1 = math.radians(lat1)
+    lon1 = math.radians(lon1)
+    lat2 = math.radians(lat2)
+    lon2 = math.radians(lon2)
+
+    dLon = lon2 - lon1
+
+    x = math.sin(dLon) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dLon)
+
+    initial_bearing = math.atan2(x, y)
+
+    return math.degrees(initial_bearing)
+
+def get_turn_points(route_id: int, db: Session) -> List[dict]:
+    """Get the points where the direction changes in a route."""
+    route = get_route_by_id(route_id, db)
+
+    if not route.points_json or len(route.points_json) < 3:
+        return []
+
+    turn_points = []
+    old_bearing = calculate_bearing(
+        route.points_json[0]["lat"],
+        route.points_json[0]["lon"],
+        route.points_json[1]["lat"],
+        route.points_json[1]["lon"],
+    )
+
+    for i in range(1, len(route.points_json) - 1):
+        lat1 = route.points_json[i]["lat"]
+        lon1 = route.points_json[i]["lon"]
+        lat2 = route.points_json[i + 1]["lat"]
+        lon2 = route.points_json[i + 1]["lon"]
+
+        # Calculate distance to avoid detecting turns for very small movements
+        distance = math.sqrt((lat2 - lat1)**2 + (lon2 - lon1)**2) * 111320 # Approximate meters
+
+        if distance < 10: # Ignore small movements
+            continue
+
+        new_bearing = calculate_bearing(lat1, lon1, lat2, lon2)
+
+        bearing_diff = abs(new_bearing - old_bearing)
+        if bearing_diff > 180:
+            bearing_diff = 360 - bearing_diff
+
+        if bearing_diff > 30: # Threshold for turn detection
+            turn_points.append(route.points_json[i])
+
+        old_bearing = new_bearing
+
+    return turn_points
+
 def update_route(
     route_id: int,
     route_update: route_schema.RouteUpdate,
