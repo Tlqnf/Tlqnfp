@@ -1,4 +1,3 @@
-
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session, selectinload, aliased
 from typing import List, Optional
@@ -23,7 +22,7 @@ def get_boards(
     comment_count_subquery = db.query(
         Comment.post_id,
         func.count(Comment.id).label("comment_count")
-    ).group_by(Comment.post_id).subquery()
+    ).filter(Comment.parent_id.is_(None)).group_by(Comment.post_id).subquery()
 
     posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
                                 .options(
@@ -109,7 +108,7 @@ def get_board(post_id: int, db: Session) -> PostResponse:
     comment_count_subquery = db.query(
         Comment.post_id,
         func.count(Comment.id).label("comment_count")
-    ).group_by(Comment.post_id).subquery()
+    ).filter(Comment.parent_id.is_(None)).group_by(Comment.post_id).subquery()
 
     result = (
         db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
@@ -380,7 +379,7 @@ def get_my_bookmarked_posts(
     comment_count_subquery = db.query(
         Comment.post_id,
         func.count(Comment.id).label("comment_count")
-    ).group_by(Comment.post_id).subquery()
+    ).filter(Comment.parent_id.is_(None)).group_by(Comment.post_id).subquery()
 
     bookmarked_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
                                            .options(selectinload(Post.report), selectinload(Post.images))
@@ -407,7 +406,7 @@ def get_my_posts(
     comment_count_subquery = db.query(
         Comment.post_id,
         func.count(Comment.id).label("comment_count")
-    ).group_by(Comment.post_id).subquery()
+    ).filter(Comment.parent_id.is_(None)).group_by(Comment.post_id).subquery()
 
     my_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
                                    .options(selectinload(Post.report).selectinload(Report.route), selectinload(Post.images))
@@ -430,7 +429,7 @@ def get_my_recent_posts(current_user: User, db: Session) -> List[PostSearchRespo
     comment_count_subquery = db.query(
         Comment.post_id,
         func.count(Comment.id).label("comment_count")
-    ).group_by(Comment.post_id).subquery()
+    ).filter(Comment.parent_id.is_(None)).group_by(Comment.post_id).subquery()
 
     my_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
                                    .options(selectinload(Post.report).selectinload(Report.route), selectinload(Post.images))
@@ -453,7 +452,7 @@ def get_my_recent_bookmarked_posts(current_user: User, db: Session) -> List[Post
     comment_count_subquery = db.query(
         Comment.post_id,
         func.count(Comment.id).label("comment_count")
-    ).group_by(Comment.post_id).subquery()
+    ).filter(Comment.parent_id.is_(None)).group_by(Comment.post_id).subquery()
 
     bookmarked_posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
                                            .options(selectinload(Post.report), selectinload(Post.images))
