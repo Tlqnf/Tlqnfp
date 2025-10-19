@@ -12,37 +12,35 @@ from schemas.community import PostCreate, PostUpdate, PostResponse, CommentCreat
 from storage.base import BaseStorage
 from utill.comment import get_replies, process_mentions_and_notifications
 
-def get_boards(
-    db: Session,
-    page: int,
-    page_size: int
-) -> list[PostSearchResponse]:
-    skip = (page - 1) * page_size
 
+
+def get_board(post_id: int, db: Session) -> PostResponse:
     comment_count_subquery = db.query(
         Comment.post_id,
         func.count(Comment.id).label("comment_count")
     ).filter(Comment.parent_id.is_(None)).group_by(Comment.post_id).subquery()
 
-    posts_with_comment_count = (db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
-                                .options(
-                                    selectinload(Post.images),
-                                    selectinload(Post.report).selectinload(Report.route),
-                                    selectinload(Post.author)
-                                )
-                                .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
-                                .filter(Post.public == True).order_by(Post.created_at.desc()).offset(skip).limit(page_size).all())
+    result = (
+        db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
+        .options(
+            selectinload(Post.images),
+            selectinload(Post.report).selectinload(Report.route),
+            selectinload(Post.author)
+        )
+        .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
+        .filter(Post.id == post_id)
+        .first()
+    )
 
-    response = []
-    for post, count in posts_with_comment_count:
-        model = PostSearchResponse.model_validate(post)
-        model.comment_count = count
-        if post.report and post.report.route:
-            model.route_name = post.report.route.name
-            model.route_id = post.report.route.id
-        response.append(model)
+    if not result:
+        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
 
-    return response
+    post, count = result
+    post_response = PostResponse.model_validate(post, update={'comment_count': count})
+    if post.report and post.report.route:
+        post_response.route_name = post.report.route.name
+    return post_response
+
 
 def create_board(
     db: Session,
@@ -104,32 +102,7 @@ def create_board(
         post_response.route_name = new_post.report.route.name
     return post_response
 
-def get_board(post_id: int, db: Session) -> PostResponse:
-    comment_count_subquery = db.query(
-        Comment.post_id,
-        func.count(Comment.id).label("comment_count")
-    ).filter(Comment.parent_id.is_(None)).group_by(Comment.post_id).subquery()
 
-    result = (
-        db.query(Post, func.coalesce(comment_count_subquery.c.comment_count, 0))
-        .options(
-            selectinload(Post.images),
-            selectinload(Post.report).selectinload(Report.route),
-            selectinload(Post.author)
-        )
-        .outerjoin(comment_count_subquery, Post.id == comment_count_subquery.c.post_id)
-        .filter(Post.id == post_id)
-        .first()
-    )
-
-    if not result:
-        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
-
-    post, count = result
-    post_response = PostResponse.model_validate(post, update={'comment_count': count})
-    if post.report and post.report.route:
-        post_response.route_name = post.report.route.name
-    return post_response
 
 def update_board(
     post_id: int,

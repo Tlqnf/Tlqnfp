@@ -19,10 +19,10 @@ class User(Base):
     kakao_id = Column(String, unique=True, nullable=True)
     is_admin = Column(Boolean, default=False, nullable=False)
 
-    posts = relationship("Post", back_populates="author")
-    comments = relationship("Comment", back_populates="author")
-    reports = relationship("Report", back_populates="author")
-    routes = relationship("Route", back_populates="author")
+    posts = relationship("Post", back_populates="author", cascade="all, delete-orphan")
+    comments = relationship("Comment", back_populates="author", cascade="all, delete-orphan")
+    reports = relationship("Report", back_populates="author", cascade="all, delete-orphan")
+    routes = relationship("Route", back_populates="author", cascade="all, delete-orphan")
     bookmarked_posts = relationship(
         "Post",
         secondary="bookmarked_posts",
@@ -38,5 +38,5 @@ class User(Base):
         secondary="comment_likes",
         back_populates="liked_by_users"
     )
-    notifications = relationship("Notification", back_populates="user")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     mentions = relationship("Mention", back_populates="user", cascade="all, delete-orphan")
