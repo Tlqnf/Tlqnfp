@@ -16,6 +16,9 @@ from dependencies import get_storage_manager
 from services import community as community_service
 from pydantic import BaseModel
 
+from services.impl.board_default_select import DefaultBoardSelectService
+from services.impl.board_location_first_select import LocationBoardSelectService
+
 router = APIRouter(prefix="/post", tags=["community"])
 
 
@@ -24,9 +27,16 @@ router = APIRouter(prefix="/post", tags=["community"])
 def get_boards(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
-    page_size: int = Query(10, ge=1, le=100)
+    page_size: int = Query(10, ge=1, le=100),
+    user_lat: Optional[float] = Query(None),
+    user_lon: Optional[float] = Query(None),
 ):
-    return community_service.get_boards(db, page, page_size)
+    if user_lat is not None and user_lon is not None:
+        service = LocationBoardSelectService()
+        return service.select(db, user_lat, user_lon)
+    else:
+        service = DefaultBoardSelectService()
+        return service.select(db, page=page, page_size=page_size)
 
 
 @router.post("", response_model=PostCreateResponse)

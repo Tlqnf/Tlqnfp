@@ -79,15 +79,6 @@ def delete_my_account(db: Session, current_user: User):
     if not user_to_delete:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    for post in user_to_delete.posts:
-        post.user_id = None
-    for comment in user_to_delete.comments:
-        comment.user_id = None
-    for report in user_to_delete.reports:
-        report.user_id = None
-    for route in user_to_delete.routes:
-        route.user_id = None
-    
     user_to_delete.bookmarked_posts.clear()
 
     db.delete(user_to_delete)

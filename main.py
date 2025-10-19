@@ -7,6 +7,7 @@ from routers import (
 )
 from models import User, Post, Comment, Report, Route
 from starlette.staticfiles import StaticFiles # Add this import
+from utils import events
 
 from schemas import community as community_schema
 from schemas import report as report_schema
