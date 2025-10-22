@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator, computed_field
+from pydantic import BaseModel, Field, field_validator, computed_field, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -170,6 +170,7 @@ class PostSearchResponse(BaseModel):
     comment_count: int = 0
     user_id: Optional[int] = None
     report_id: Optional[int] = None
+    route_id: Optional[int] = None
     created_at: datetime
     images: List[Image] = []
     hash_tag: List[str]
@@ -178,12 +179,11 @@ class PostSearchResponse(BaseModel):
     report: Optional[ReportWithRouteResponse] = Field(None, exclude=True)
     route_name: Optional[str] = None # New field for route name
 
-    @computed_field
-    @property
-    def route_id(self) -> Optional[int]:
-        if self.report:
-            return self.report.route_id
-        return None
+    @model_validator(mode='after')
+    def populate_route_id(self) -> 'PostSearchResponse':
+        if self.report and self.report.route:
+            self.route_id = self.report.route.id
+        return self
 
     @field_validator('hash_tag', mode='before')
     @classmethod
