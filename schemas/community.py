@@ -170,7 +170,6 @@ class PostSearchResponse(BaseModel):
     comment_count: int = 0
     user_id: Optional[int] = None
     report_id: Optional[int] = None
-    route_id: Optional[int] = None # New field for route ID
     created_at: datetime
     images: List[Image] = []
     hash_tag: List[str]
@@ -178,6 +177,13 @@ class PostSearchResponse(BaseModel):
     map_image_url: Optional[str] = None
     report: Optional[ReportWithRouteResponse] = Field(None, exclude=True)
     route_name: Optional[str] = None # New field for route name
+
+    @computed_field
+    @property
+    def route_id(self) -> Optional[int]:
+        if self.report:
+            return self.report.route_id
+        return None
 
     @field_validator('hash_tag', mode='before')
     @classmethod
