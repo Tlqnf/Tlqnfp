@@ -5,6 +5,9 @@ from fastapi import WebSocket, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from collections import deque
+
+from starlette.websockets import WebSocketDisconnect
+
 from database import SessionLocal
 from models import Route, Report, User
 from utill.tracking_calculator import TrackingSession
@@ -26,15 +29,9 @@ def start_live_recording_session(db: Session, current_user: User) -> dict:
         db.commit()
         db.refresh(new_route)
 
-        new_report = Report(route_id=new_route.id, user_id=current_user.id)
-        db.add(new_report)
-        db.commit()
-        db.refresh(new_report)
-
         return {
             "status": "session_started",
             "route_id": new_route.id,
-            "report_id": new_report.id
         }
     except Exception as e:
         db.rollback()

@@ -11,6 +11,7 @@ router = APIRouter()
 @router.get("/start-session", response_model=dict)
 async def start_live_recording_session(
     db: Session = Depends(get_db),
+
     current_user: User = Depends(get_current_user)
 ):
     return start_session_service(db, current_user)
