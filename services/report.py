@@ -7,7 +7,7 @@ from sqlalchemy import func
 from zoneinfo import ZoneInfo
 
 from models import Report, User, Route
-from schemas.report import ReportResponse, AllReportResponse, ReportCreate, WeeklyReportSummary, ReportUpdate
+from schemas.report import ReportResponse, AllReportResponse, ReportCreate, ReportSummary, ReportUpdate
 
 def create_report(
     report_data: ReportCreate,
@@ -75,9 +75,19 @@ def get_reports_by_route_and_user(
 
     return reports
 
-def get_weekly_report_summary(db: Session, current_user: User) -> WeeklyReportSummary:
+# report 통계
+
+
+def get_report_summary(db: Session, current_user: User, get_period: int) -> ReportSummary:
     end_date = datetime.now(ZoneInfo("Asia/Seoul"))
-    start_date = end_date - timedelta(days=7)
+    if(get_period == 1):
+        start_date = end_date
+    elif(get_period == 2):
+        start_date = end_date - timedelta(days=7)
+    elif(get_period == 3):
+        import calendar
+        start_date = end_date - timedelta(calendar.monthrange(end_date.year, end_date.month)[1])
+
 
     reports = db.query(Report).filter(
         Report.user_id == current_user.id,
@@ -86,11 +96,7 @@ def get_weekly_report_summary(db: Session, current_user: User) -> WeeklyReportSu
     ).all()
 
     if not reports:
-        return WeeklyReportSummary(
-            routes_taken_count=0,
-            total_activity_time_formatted="00:00:00",
-            total_activity_distance_km=0
-        )
+        return ReportSummary()
 
     routes_taken_count = len(reports)
     total_activity_time_seconds = sum(report.health_time for report in reports)
@@ -99,11 +105,13 @@ def get_weekly_report_summary(db: Session, current_user: User) -> WeeklyReportSu
     seconds = total_activity_time_seconds % 60
     total_activity_time_formatted = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
     total_activity_distance_km = sum(report.distance for report in reports) / 1000
+    total_kal = sum(report.kcal for report in reports)
 
-    return WeeklyReportSummary(
+    return ReportSummary(
         routes_taken_count=routes_taken_count,
         total_activity_time_formatted=total_activity_time_formatted,
-        total_activity_distance_km=total_activity_distance_km
+        total_activity_distance_km=total_activity_distance_km,
+        total_kal=total_kal
     )
 
 def get_report_by_id(report_id: int, db: Session, current_user: User) -> AllReportResponse:
