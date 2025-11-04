@@ -22,3 +22,5 @@ class StampRecord(BaseModel):
         from_attributes = True
 
 
+class StampCount(BaseModel):
+    total_count_of_stamp: int

@@ -45,7 +45,12 @@ async def getTodayStamp (
 ):
     return calender_service.getStampData(db, current_user.id, True)
 
-
+@router.get("/count-of-stamp")
+async def getCountOfStamp (
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+):
+    return calender_service.findAllCountStamp(db, current_user.id)
 
 
 

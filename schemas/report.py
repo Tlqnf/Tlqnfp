@@ -92,7 +92,16 @@ class ReportSummary(BaseModel):
     routes_taken_count: int = 0
     total_activity_time_formatted: str = "00:00:00"
     total_activity_distance_km: float = 0
+    max_speed: float = 0
     total_kal: int = 0
+
+
+class ReportLev(BaseModel):
+    lev: str
+    exp: int
+    next_lev_exp: int
+
+
 
 
 class ReportUpdate(BaseModel):

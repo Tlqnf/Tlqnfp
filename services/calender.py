@@ -5,9 +5,10 @@ from typing import Any
 from sqlalchemy.sql.expression import extract
 
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from models.calender import Stamps
-from schemas.calender import StampRecord, CalenderStampData
+from schemas.calender import StampRecord, CalenderStampData, StampCount
 
 
 def getStampData(db: Session, user_id: int, is_day: bool, date: datetime = datetime.today())-> list[type[CalenderStampData]] | \
@@ -36,6 +37,11 @@ def getStampRecord(db: Session, user_id: int, date: datetime) -> StampRecord:
 
     return StampRecord(year=date.year,month=date.month,average_of_stamp_lev=round(avg))
 
+def findAllCountStamp(db: Session, user_id: int) -> StampCount:
+     total_count = db.query(func.count(Stamps.id)).filter(
+        Stamps.user_id == user_id,
+     ).scalar() or 0
+     return StampCount(total_count_of_stamp=total_count)
 
 
 
