@@ -1,5 +1,4 @@
 from datetime import datetime
-from idlelib.query import Query
 from typing import Any
 
 from sqlalchemy.sql.expression import extract
