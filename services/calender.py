@@ -10,21 +10,23 @@ from models.calender import Stamps
 from schemas.calender import StampRecord, CalenderStampData, StampCount
 
 
-def getStampData(db: Session, user_id: int, is_day: bool, date: datetime = datetime.today())-> list[type[CalenderStampData]] | \
+def getStampData(db: Session, user_id: int, is_day: bool, date: datetime = None)-> list[type[CalenderStampData]] | \
                                                                                                list[Any] | None | Any:
-    if(is_day):
+    if is_day:
         return db.query(Stamps).filter(
             Stamps.user_id == user_id,
             extract('year', Stamps.date) == date.year,
             extract('month', Stamps.date) == date.month,
             extract('day', Stamps.date) == date.day
         ).first() or []
-    else:
+    elif date:
         return db.query(Stamps).filter(
             Stamps.user_id == user_id,
             extract('year', Stamps.date) == date.year,
             extract('month', Stamps.date) == date.month,
         ).all() or []
+    else:
+        return db.query(Stamps).filter(Stamps.user_id == user_id).all() or []
 
 def getStampRecord(db: Session, user_id: int, date: datetime) -> StampRecord:
     from sqlalchemy import func

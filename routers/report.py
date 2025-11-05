@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from models import User
-from schemas.report import ReportResponse, AllReportResponse, ReportCreate, ReportSummary, ReportUpdate, ReportLev
+from schemas.report import ReportResponse, AllReportResponse, ReportCreate, ReportSummary, ReportUpdate, ReportLev, MonthlyDistanceComparison
 from database import get_db
 from utils.auth import get_current_user
 from services import report as report_service
@@ -58,14 +58,19 @@ def get_daily_report_summary(date: datetime = datetime.now() ,db: Session = Depe
     return report_service.get_report_summary(db, current_user,1, date)
 
 
-@router.get("/{report_id}", response_model=AllReportResponse)
-def get_report_by_id(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return report_service.get_report_by_id(report_id, db, current_user)
+@router.get("/monthly-comparison", response_model=MonthlyDistanceComparison)
+def get_monthly_distance_comparison(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return report_service.get_monthly_distance_comparison(db, current_user)
 
 
 @router.get("/lev", response_model=ReportLev)
 def get_report_lev(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return report_service.get_report_lev(db, current_user)
+
+
+@router.get("/{report_id}", response_model=AllReportResponse)
+def get_report_by_id(report_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return report_service.get_report_by_id(report_id, db, current_user)
 
 
 @router.patch("/{report_id}", response_model=AllReportResponse)

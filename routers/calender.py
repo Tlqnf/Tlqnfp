@@ -26,6 +26,13 @@ async def getStampReport (
     return calender_service.getStampRecord(db, current_user.id, date)
 
 
+@router.get("/month-stamp/", response_model = list[CalenderStampData])
+async def getMonthStamp (
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+):
+    return calender_service.getStampData(db, current_user.id, False, None)
+
 @router.get("/month-stamp/{date}", response_model = list[CalenderStampData])
 async def getMonthStamp (
         db: Session = Depends(get_db),

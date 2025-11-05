@@ -101,6 +101,10 @@ class ReportLev(BaseModel):
     exp: int
     next_lev_exp: int
 
+class MonthlyDistanceComparison(BaseModel):
+    change_type: int
+    distance_change: float
+
 
 
 
