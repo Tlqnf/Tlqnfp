@@ -14,7 +14,7 @@ from models import Report, User, Route
 
 from models.calender import Stamps
 
-from schemas.report import ReportResponse, AllReportResponse, ReportCreate, ReportSummary, ReportUpdate, ReportLev
+from schemas.report import ReportResponse, AllReportResponse, ReportCreate, ReportSummary, ReportUpdate, ReportLev, MonthlyDistanceComparison
 
 
 
@@ -235,3 +235,44 @@ def get_report_lev(db: Session, current_user: User) -> ReportLev:
         next_lev_exp=next_level_exp
     )
 
+
+def get_monthly_distance_comparison(db: Session, current_user: User) -> MonthlyDistanceComparison:
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    
+    # Current month
+    current_month_start = today.replace(day=1)
+    next_month_start = (current_month_start + timedelta(days=32)).replace(day=1)
+    current_month_end = next_month_start - timedelta(days=1)
+    
+    current_month_distance = db.query(func.sum(Report.distance)).filter(
+        Report.user_id == current_user.id,
+        Report.created_at >= current_month_start,
+        Report.created_at <= current_month_end
+    ).scalar() or 0
+
+    # Previous month
+    prev_month_end = current_month_start - timedelta(days=1)
+    prev_month_start = prev_month_end.replace(day=1)
+
+    prev_month_distance = db.query(func.sum(Report.distance)).filter(
+        Report.user_id == current_user.id,
+        Report.created_at >= prev_month_start,
+        Report.created_at <= prev_month_end
+    ).scalar() or 0
+
+    change_type = 0
+    distance_change = 0.0
+
+    if prev_month_distance == 0:
+        if current_month_distance > 0:
+            change_type = 1
+            distance_change = 100.0
+    else:
+        percentage_change = ((current_month_distance - prev_month_distance) / prev_month_distance) * 100
+        if percentage_change > 0:
+            change_type = 1
+        elif percentage_change < 0:
+            change_type = 2
+        distance_change = abs(percentage_change)
+
+    return MonthlyDistanceComparison(change_type=change_type, distance_change=distance_change)
