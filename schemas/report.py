@@ -105,6 +105,10 @@ class MonthlyDistanceComparison(BaseModel):
     change_type: int
     distance_change: float
 
+class DailyDistance(BaseModel):
+    date: str
+    distance: float
+
 
 
 
