@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from models import User
-from schemas.report import ReportResponse, AllReportResponse, ReportCreate, ReportSummary, ReportUpdate, ReportLev, MonthlyDistanceComparison
+from schemas.report import ReportResponse, AllReportResponse, ReportCreate, ReportSummary, ReportUpdate, ReportLev, MonthlyDistanceComparison, DailyDistance
 from database import get_db
 from utils.auth import get_current_user
 from services import report as report_service
@@ -56,6 +56,11 @@ def get_monthly_report_summary(db: Session = Depends(get_db), current_user: User
 def get_daily_report_summary(date: datetime = datetime.now() ,db: Session = Depends(get_db), current_user: User = Depends(get_current_user) ):
 
     return report_service.get_report_summary(db, current_user,1, date)
+
+
+@router.get("/daily-distance", response_model=List[DailyDistance])
+def get_last_week_daily_distance(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return report_service.get_last_week_daily_distance(db, current_user)
 
 
 @router.get("/monthly-comparison", response_model=MonthlyDistanceComparison)

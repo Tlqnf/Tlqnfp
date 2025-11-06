@@ -14,7 +14,7 @@ from models import Report, User, Route
 
 from models.calender import Stamps
 
-from schemas.report import ReportResponse, AllReportResponse, ReportCreate, ReportSummary, ReportUpdate, ReportLev, MonthlyDistanceComparison
+from schemas.report import ReportResponse, AllReportResponse, ReportCreate, ReportSummary, ReportUpdate, ReportLev, MonthlyDistanceComparison, DailyDistance
 
 
 
@@ -276,3 +276,22 @@ def get_monthly_distance_comparison(db: Session, current_user: User) -> MonthlyD
         distance_change = abs(percentage_change)
 
     return MonthlyDistanceComparison(change_type=change_type, distance_change=distance_change)
+
+def get_last_week_daily_distance(db: Session, current_user: User) -> List[DailyDistance]:
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    daily_distances = []
+
+    for i in range(7):
+        date = today - timedelta(days=i)
+        start_of_day = datetime.combine(date, datetime.min.time())
+        end_of_day = datetime.combine(date, datetime.max.time())
+
+        distance = db.query(func.sum(Report.distance)).filter(
+            Report.user_id == current_user.id,
+            Report.created_at >= start_of_day,
+            Report.created_at <= end_of_day
+        ).scalar() or 0
+
+        daily_distances.append(DailyDistance(date=date.isoformat(), distance=distance / 1000))
+
+    return daily_distances
