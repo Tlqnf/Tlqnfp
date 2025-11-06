@@ -44,15 +44,15 @@ def get_reports_by_route_and_user(
     return report_service.get_reports_by_route_and_user(route_id, user_id, db, current_user)
 
 
-@router.get("/weekly_summary", response_model=ReportSummary)
+@router.get("/weekly-summary", response_model=ReportSummary)
 def get_weekly_report_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return report_service.get_report_summary(db, current_user,2, datetime.today())
 
-@router.get("/monthly_summary", response_model=ReportSummary)
+@router.get("/monthly-summary", response_model=ReportSummary)
 def get_monthly_report_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return report_service.get_report_summary(db, current_user, 3,datetime.today())
 
-@router.get("/daily_summary/", response_model=ReportSummary)
+@router.get("/daily-summary/", response_model=ReportSummary)
 def get_daily_report_summary(date: datetime = datetime.now() ,db: Session = Depends(get_db), current_user: User = Depends(get_current_user) ):
 
     return report_service.get_report_summary(db, current_user,1, date)
