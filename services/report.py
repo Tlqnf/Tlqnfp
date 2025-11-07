@@ -231,7 +231,7 @@ def get_report_lev(db: Session, current_user: User) -> ReportLev:
 
     return ReportLev(
         lev=levels[current_level]["name"],
-        exp=total_distance_km,
+        exp=int(total_distance_km),
         next_lev_exp=next_level_exp
     )
 
