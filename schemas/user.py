@@ -32,3 +32,13 @@ class FCMTokenUpdate(BaseModel):
 
 class ProfileDescriptionStatus(BaseModel):
     is_null: bool
+
+
+from datetime import datetime
+
+class SubscriptionStatusResponse(BaseModel):
+    is_subscribed: bool
+    subscription_expiry_date: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

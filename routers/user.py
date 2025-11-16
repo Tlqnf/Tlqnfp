@@ -5,7 +5,7 @@ from typing import Optional
 
 from database import get_db
 from models.user import User
-from schemas.user import UserResponse, FCMTokenUpdate, ProfileDescriptionStatus
+from schemas.user import UserResponse, FCMTokenUpdate, ProfileDescriptionStatus, SubscriptionStatusResponse
 from utils.auth import get_current_user
 from storage.base import BaseStorage
 from dependencies import get_storage_manager
@@ -60,6 +60,17 @@ def logout(db: Session = Depends(get_db), current_user: User = Depends(get_curre
 @router.get("/me/profile-description-status", response_model=ProfileDescriptionStatus)
 def get_profile_description_status(current_user: User = Depends(get_current_user)):
     return user_service.get_profile_description_status(current_user)
+
+@router.get("/subscription", response_model=SubscriptionStatusResponse)
+def get_my_subscription_status(current_user: User = Depends(get_current_user)):
+    """
+    현재 로그인한 사용자의 구독 상태를 조회합니다.
+    """
+    return SubscriptionStatusResponse(
+        is_subscribed=current_user.is_subscribed,
+        subscription_expiry_date=current_user.subscription_expiry_date
+    )
+
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 def delete_my_account(
