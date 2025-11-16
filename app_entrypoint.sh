@@ -13,4 +13,7 @@ fi
 # The "exec" command will run the command passed to the script as arguments.
 # This allows the Dockerfile's CMD to be executed as the main process.
 echo "Executing main command: $@"
+echo "Running database migrations..."           
+  alembic upgrade head
 exec "$@"
+
