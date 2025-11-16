@@ -14,6 +14,6 @@ fi
 # This allows the Dockerfile's CMD to be executed as the main process.
 echo "Executing main command: $@"
 echo "Running database migrations..."  
-   alembic stamp head    
+    alembic upgrade head 
 exec "$@"
 
