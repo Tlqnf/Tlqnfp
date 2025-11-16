@@ -19,6 +19,11 @@ class User(Base):
     kakao_id = Column(String, unique=True, nullable=True)
     is_admin = Column(Boolean, default=False, nullable=False)
 
+    # Subscription details
+    is_subscribed = Column(Boolean, default=False, nullable=False)
+    subscription_expiry_date = Column(DateTime(timezone=True), nullable=True)
+    google_purchase_token = Column(String, nullable=True, unique=True)
+
     posts = relationship("Post", back_populates="author", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="author", cascade="all, delete-orphan")
     reports = relationship("Report", back_populates="author", cascade="all, delete-orphan")
